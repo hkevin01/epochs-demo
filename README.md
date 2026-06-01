@@ -19,6 +19,7 @@
 ## Table of Contents
 
 - [What Is an Epoch?](#what-is-an-epoch)
+- [What Actually Happens Inside One Epoch](#what-actually-happens-inside-one-epoch)
 - [Why Are Multiple Epochs Needed?](#why-are-multiple-epochs-needed)
 - [The Four Phases of Training](#the-four-phases-of-training)
 - [Tech Stack and Architecture](#tech-stack-and-architecture)
@@ -51,6 +52,219 @@ The concept of an epoch is fundamental because neural networks do not — and ca
 
 > [!TIP]
 > The best mental model for an epoch is a student studying a textbook. The first time through (epoch 1), they absorb the broad outlines but miss many details. The second time, they understand more connections. By the tenth pass, they have internalized the material deeply — but if they keep re-reading, they might start memorising specific sentence phrasings rather than the underlying ideas. Training epochs work exactly the same way.
+
+---
+
+## What Actually Happens Inside One Epoch
+
+Understanding an epoch at the surface level ("it loops over the data") is not the same as understanding what physically happens to the model during that loop. This section walks through every mechanical step in sequence — from raw input numbers to the concrete weight changes that accumulate into learned behaviour.
+
+### Step-by-Step Walkthrough of a Single Epoch
+
+The diagram below shows every operation that executes inside one complete epoch, broken into its three stages: data preparation, the training pass (runs once per mini-batch), and the validation pass (runs once at the end of the epoch with no weight changes).
+
+```mermaid
+flowchart TD
+    A([▶ Epoch N begins\nDataLoader shuffles dataset]) --> B
+
+    subgraph TRAIN ["🔄 Training Pass — repeats for every mini-batch"]
+        B["① Load mini-batch\nX_batch: shape 64×2\ny_batch: shape 64"] --> C
+        C["② Forward Pass\nInput → Linear → BatchNorm → ReLU → Linear\nOutput: logits shape 64×2"] --> D
+        D["③ Compute Loss\nCrossEntropy(logits, y_batch)\nSingle scalar, e.g. 0.847"] --> E
+        E["④ Zero Gradients\noptimizer.zero_grad()\nClear .grad on every parameter"] --> F
+        F["⑤ Backward Pass\nloss.backward()\nChain rule computes ∂loss/∂w for every weight"] --> G
+        G["⑥ Weight Update\noptimizer.step()\nw = w - lr × gradient\n(Adam adjusts lr per param)"]
+    end
+
+    G --> H{More\nbatches?}
+    H -->|Yes| B
+    H -->|No| I
+
+    subgraph VAL ["🔍 Validation Pass — runs once, no weight changes"]
+        I["torch.no_grad()\nLoop all val batches\nForward pass only"] --> J
+        J["Compute mean val_loss\nand val_acc over all val samples"]
+    end
+
+    J --> K["📝 Record to history dict\ntrain_loss, val_loss\ntrain_acc, val_acc"]
+    K --> L["📉 Scheduler step\nCosineAnnealing reduces lr\nfor next epoch"]
+    L --> M([✅ Epoch N complete\nProceed to Epoch N+1])
+
+    style TRAIN fill:#EFF6FF,stroke:#2563EB
+    style VAL fill:#F0FDF4,stroke:#16A34A
+```
+
+> [!NOTE]
+> **Why zero the gradients before every mini-batch?** PyTorch accumulates (adds) gradients into `.grad` by default rather than overwriting them. This design choice exists to support advanced techniques like gradient accumulation over multiple mini-batches. For standard training you must explicitly call `optimizer.zero_grad()` at the start of each mini-batch, otherwise the gradients from the previous batch are added to the current batch's gradients, producing incorrect and unstable updates. Forgetting `zero_grad()` is one of the most common bugs in PyTorch code.
+
+---
+
+### What the Forward Pass Actually Does
+
+When you call `model(X_batch)`, PyTorch executes the following sequence of tensor operations through the network layers. The input is two raw numbers for each sample (the x-coordinate and y-coordinate of a moon point). The output is two numbers called **logits** — one raw score for each class. The class with the higher logit is the model's prediction.
+
+For the `medium` MLP with input `[x, y]`, the computation is:
+
+```
+Input:      [x, y]                         shape: (64, 2)
+  ↓  Linear(2 → 64):  out = X @ W1.T + b1  shape: (64, 64)
+  ↓  BatchNorm1d(64):  normalise each feature across the batch
+  ↓  ReLU:             max(0, out)          shape: (64, 64)  — negatives become 0
+  ↓  Dropout(p=0.1):   randomly zero 10% of activations during training
+  ↓  Linear(64 → 64):  out = X @ W2.T + b2 shape: (64, 64)
+  ↓  BatchNorm1d(64):  normalise again
+  ↓  ReLU:             max(0, out)
+  ↓  Linear(64 → 2):   out = X @ W3.T + b3 shape: (64, 2)
+Output:     [logit_class0, logit_class1]    shape: (64, 2)
+```
+
+> [!NOTE]
+> At this stage the output numbers are **not** probabilities. They are raw, unconstrained scores — a logit of `3.4` for class 1 and `-1.2` for class 0 just means "the model strongly believes this point is class 1." To convert logits to probabilities between 0 and 1 that sum to 1, you apply **softmax**: `P(class_k) = exp(logit_k) / sum(exp(logits))`. `CrossEntropyLoss` applies this conversion internally, which is why you pass raw logits to the loss function rather than softmax outputs.
+
+---
+
+### What the Backward Pass Actually Does
+
+After the forward pass produces a scalar loss value (e.g. `0.847`), PyTorch knows how that loss was computed — it tracked every operation in a **computation graph** built automatically during the forward pass. The backward pass walks this graph in reverse, applying the chain rule of calculus at each step to compute how much each individual weight contributed to the final loss.
+
+The result is a **gradient** for every learnable parameter in the model. A gradient is a number attached to each weight that answers the question: "If I increase this weight by a tiny amount, does the loss go up or down, and by how much?" A positive gradient means increasing the weight increases the loss — so the optimiser should decrease it. A negative gradient means increasing the weight decreases the loss — so the optimiser should increase it.
+
+For a single weight `w`, the update rule used by gradient descent is:
+
+```
+w_new = w_old  -  learning_rate × gradient
+```
+
+With Adam, the learning rate is adjusted individually for each weight based on the history of its past gradients, which makes the optimiser converge faster and handle parameters with very different gradient magnitudes more gracefully than plain SGD.
+
+> [!IMPORTANT]
+> The backward pass does **not** change any weights. It only computes and stores gradients in the `.grad` attribute of each parameter tensor. The actual weight change happens in the next step: `optimizer.step()`. This two-step design — compute gradients, then apply them — is what allows advanced techniques like gradient clipping (capping gradient magnitudes before they are applied) and gradient accumulation (summing gradients over multiple batches before applying a single large update).
+
+---
+
+### What the Model Is Actually Learning
+
+The model is learning the **weights** — the numerical values inside the `nn.Linear` layers. These are floating-point numbers, nothing more. But the pattern of values across all weights collectively encodes a function that maps any input point `[x, y]` to a class prediction. That encoded function is what we call "what the model has learned."
+
+Concretely, for the two-moons problem, the model is learning a set of weights that implements a smooth curved decision boundary. It does not learn the boundary as an explicit equation like "if x² + y² > r then class 1." Instead, the boundary emerges implicitly from the interplay of all the weight values across all layers. Each layer learns to detect progressively more abstract features:
+
+- **Layer 1 weights** (shape `64×2`) — learn to detect linear combinations of x and y, effectively rotating and scaling the 2-D input space into 64 different linear projections. Each of the 64 neurons detects a different linear direction in the input.
+- **Layer 2 weights** (shape `64×64`) — learn to combine the 64 linear detections from layer 1 into 64 higher-order features, some of which will detect curved or nonlinear combinations that neither layer alone could produce.
+- **Layer 3 weights** (shape `2×64`) — learn a linear combination of all 64 abstract features that best separates the two classes. This is the final decision layer.
+
+> [!TIP]
+> Think of it this way: the input `[x, y]` is a point on a map. Layer 1 stretches and rotates that map in 64 different ways simultaneously. Layer 2 takes those 64 distorted maps and combines them in 64 new ways, creating curved shapes. Layer 3 draws a single straight line on this final distorted map — but because the distortion is non-linear, the "straight line" in the distorted space maps back to a smooth curve in the original `[x, y]` space. That curve is the decision boundary.
+
+---
+
+### How the Model's Knowledge Is Stored
+
+Everything the model has learned after any number of epochs is stored in a single Python dictionary called the **state dict**. This dictionary maps the name of every learnable parameter to its current numerical tensor. When you save a checkpoint with `torch.save(model.state_dict(), path)`, you are writing this dictionary to disk in PyTorch's binary format.
+
+#### State Dict Structure
+
+For the `medium` MLP, calling `model.state_dict()` returns a dictionary with the following keys and shapes:
+
+| # | Key | Tensor Shape | Total Values | What It Stores |
+|---|---|---|---|---|
+| 1 | `layers.0.weight` | `(64, 2)` | 128 | Weight matrix for Linear(2→64) — maps raw x,y input to 64 features |
+| 2 | `layers.0.bias` | `(64,)` | 64 | Bias vector for the first linear layer |
+| 3 | `layers.1.weight` | `(64,)` | 64 | Learnable scale (gamma) for BatchNorm — applied after normalisation |
+| 4 | `layers.1.bias` | `(64,)` | 64 | Learnable shift (beta) for BatchNorm — shifts each feature's mean |
+| 5 | `layers.1.running_mean` | `(64,)` | 64 | Non-learnable running average of feature means across all batches seen |
+| 6 | `layers.1.running_var` | `(64,)` | 64 | Non-learnable running variance of features across all batches seen |
+| 7 | `layers.3.weight` | `(64, 64)` | 4,096 | Weight matrix for Linear(64→64) — combines first-layer features |
+| 8 | `layers.3.bias` | `(64,)` | 64 | Bias vector for the second linear layer |
+| 9 | `layers.4.weight` | `(64,)` | 64 | BatchNorm scale for second hidden layer |
+| 10 | `layers.4.bias` | `(64,)` | 64 | BatchNorm shift for second hidden layer |
+| 11 | `layers.4.running_mean` | `(64,)` | 64 | Running mean for second BatchNorm |
+| 12 | `layers.4.running_var` | `(64,)` | 64 | Running variance for second BatchNorm |
+| 13 | `output.weight` | `(2, 64)` | 128 | Weight matrix for final Linear(64→2) — produces class logits |
+| 14 | `output.bias` | `(2,)` | 2 | Bias for the output layer — one offset per class |
+
+> [!NOTE]
+> The `medium` model has approximately **4,700 total learnable parameters** — the sum of all the `weight` and `bias` tensors listed above (excluding `running_mean` and `running_var`, which are tracked statistics, not learnable parameters, and do not receive gradients). After training, every one of those 4,700 floating-point numbers has been tuned by thousands of tiny gradient-descent steps across 200 epochs of 16 mini-batches each — a total of approximately 3,200 individual weight updates.
+
+#### What the Numbers Actually Look Like
+
+You can inspect the learned weights at any time in Python. After training, the values are no longer random — they have been shaped by the data into a specific configuration that encodes the moon boundary:
+
+```python
+import torch
+from src.model import build_model
+
+# Load trained weights from a checkpoint
+model = build_model("medium")
+ckpt = torch.load("checkpoints/epoch_0200.pt", map_location="cpu")
+model.load_state_dict(ckpt["model_state_dict"])
+
+# Inspect the first layer's weight matrix — shape (64, 2)
+w1 = model.state_dict()["layers.0.weight"]
+print(w1.shape)         # torch.Size([64, 2])
+print(w1[:3])           # First 3 rows: each row is one neuron's detector direction
+# e.g. tensor([[ 0.843, -0.312],   <- this neuron detects a roughly 70-degree direction
+#              [-0.521,  0.917],   <- this neuron detects a roughly 120-degree direction
+#              [ 0.103,  0.769]])  <- this neuron responds most to high y values
+
+# The output layer weights — shape (2, 64)
+w_out = model.state_dict()["output.weight"]
+print(w_out.shape)      # torch.Size([2, 64])
+# Each row is the combination of all 64 features that votes for one class
+```
+
+> [!TIP]
+> The individual numbers in a trained weight matrix are not human-interpretable on their own — you cannot look at a single weight value and say "this represents the upper crescent." The knowledge is **distributed** across all weights simultaneously. The boundary emerges from the interaction of all ~4,700 values together, not from any single number. This is fundamentally different from rule-based systems where you can point to an explicit "if y > 0.5 then class 1" condition.
+
+#### The Checkpoint File Format on Disk
+
+When `utils.save_checkpoint` writes a `.pt` file, it uses `torch.save` which serialises the dictionary to a binary format based on Python's `pickle` protocol, with tensor data stored in a compact binary array format. A checkpoint file for the `medium` model at a single epoch is approximately **20-30 KB** on disk.
+
+| # | What Is Saved | Format | Why |
+|---|---|---|---|
+| 1 | `model_state_dict` | Python `OrderedDict` of named tensors | The complete learned weights at this epoch |
+| 2 | `epoch` | Python `int` | Records which epoch this snapshot represents |
+| 3 | `train_loss` | Python `float` | Training loss at this epoch — for quick reference without reloading history |
+| 4 | `val_loss` | Python `float` | Validation loss at this epoch — key metric for selecting the best checkpoint |
+| 5 | `train_acc` | Python `float` | Training accuracy at this epoch |
+| 6 | `val_acc` | Python `float` | Validation accuracy at this epoch |
+| 7 | `capacity` | Python `str` | The preset name — needed to reconstruct the correct model architecture before loading weights |
+
+> [!IMPORTANT]
+> A checkpoint file stores **only the weights**, not the model architecture. To load a checkpoint you must first construct the model with the correct architecture (matching the number of layers and their sizes), then call `model.load_state_dict(ckpt["model_state_dict"])`. If you try to load weights from a `medium` model into a `large` model, PyTorch will raise a `RuntimeError` because the tensor shapes do not match. This is why the `capacity` key is stored alongside the weights.
+
+#### The History File Format
+
+Alongside checkpoint files, `utils.save_history` writes `outputs/history.json` after each epoch. This is a plain JSON file containing four parallel lists, each of length `num_epochs`, recording every metric at every epoch in human-readable format:
+
+```json
+{
+  "train_loss": [1.102, 0.891, 0.743, 0.631, 0.541, "..."],
+  "val_loss":   [1.098, 0.884, 0.739, 0.627, 0.540, "..."],
+  "train_acc":  [0.512, 0.604, 0.681, 0.734, 0.779, "..."],
+  "val_acc":    [0.510, 0.600, 0.675, 0.730, 0.772, "..."]
+}
+```
+
+Each list index corresponds to one epoch (index 0 = epoch 1, index 49 = epoch 50, and so on). This file is loaded by the Jupyter notebook and by all visualisation functions. Because it is plain JSON you can open it in any text editor, inspect the numbers, or load it with Python's built-in `json` module without needing PyTorch installed.
+
+> [!NOTE]
+> The `history.json` file records **averages over the entire dataset** for each epoch, not per-batch values. For example, `train_loss[49]` is the mean of all ~16 mini-batch losses that were computed during epoch 50. This averaging smooths out mini-batch noise and gives you one stable number per epoch that represents the overall state of learning at that point in training.
+
+---
+
+### How Learning Accumulates Across Epochs
+
+The diagram below shows how the weight values change over the course of a 200-epoch run. At epoch 1 every weight is a small random number near zero. By epoch 200 the weights have been nudged by approximately 3,200 tiny gradient steps (16 batches × 200 epochs) and have settled into a configuration that encodes the moon boundary.
+
+| Epoch Range | What Is Happening to the Weights | Visible Effect on Boundary |
+|---|---|---|
+| 1 - 10 | Weights move quickly away from random initialisation; large gradients because loss is high | Boundary shifts from random to rough linear separation |
+| 10 - 50 | Weights begin to specialise; different neurons start responding to different regions of the input | Boundary starts curving; roughly follows moon shapes |
+| 50 - 100 | Weights fine-tune; learning rate is decaying so updates are smaller; BatchNorm statistics stabilise | Boundary tightens; misclassified regions shrink |
+| 100 - 150 | Weights nearly converged; very small updates; loss curve is flat | Boundary smooth and stable; changes barely visible between epochs |
+| 150 - 200 | Weights essentially static for the medium model; may start overfitting for overfit preset | Boundary barely changes (medium); may start developing kinks (overfit) |
+
+> [!TIP]
+> You can measure how much the weights are changing per epoch by computing the **L2 norm of the gradient** before each optimiser step: `grad_norm = sum(p.grad.norm()**2 for p in model.parameters())**0.5`. A large gradient norm means the model is still learning fast. A gradient norm near zero means the model has converged. This metric, sometimes called the gradient signal, is a more direct measure of learning progress than the loss value itself.
 
 ---
 
