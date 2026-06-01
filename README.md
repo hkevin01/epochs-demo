@@ -24,6 +24,16 @@
 - [The Four Phases of Training](#the-four-phases-of-training)
 - [Tech Stack and Architecture](#tech-stack-and-architecture)
 - [System Architecture Diagrams](#system-architecture-diagrams)
+  - [Diagram 1 — End-to-End Data Pipeline](#diagram-1--end-to-end-data-pipeline)
+  - [Diagram 2 — Training Loop Internals](#diagram-2--training-loop-internals-per-epoch)
+  - [Diagram 3 — Decision Boundary Generation](#diagram-3--decision-boundary-generation)
+  - [Diagram 4 — Model Capacity Spectrum](#diagram-4--model-capacity-spectrum)
+  - [Diagram 5 — Idealised Loss Curves](#diagram-5--idealised-loss-curves-across-epochs)
+  - [Diagram 6 — Idealised Accuracy Curves](#diagram-6--idealised-accuracy-curves-across-epochs)
+  - [Diagram 7 — Four Training Phases Timeline](#diagram-7--the-four-training-phases-timeline)
+  - [Diagram 8 — Bias-Variance Tradeoff](#diagram-8--bias-variance-tradeoff-vs-epoch-count)
+  - [Diagram 9 — Learning Rate Schedule](#diagram-9--cosine-annealing-learning-rate-schedule)
+  - [Diagram 10 — One Weight Update Step](#diagram-10--gradient-descent-one-weight-update-step)
 - [Project Structure](#project-structure)
 - [Module Reference](#module-reference)
 - [Quick Start](#quick-start)
@@ -462,8 +472,6 @@ graph LR
 
 ### Diagram 5 — Idealised Loss Curves Across Epochs
 
-This chart visualises the expected shape of training and validation loss across the full 200-epoch run at default settings. The two lines diverge in the final quarter of training, which is the visual signature of overfitting onset. Note that the validation line rises while the training line continues to fall — this is the exact pattern to watch for in your own experiments.
-
 ```mermaid
 xychart-beta
     title "Idealised Loss Curves — Train vs Validation (200 Epochs)"
@@ -473,8 +481,206 @@ xychart-beta
     line [1.10, 0.68, 0.44, 0.27, 0.20, 0.22, 0.27, 0.33, 0.40]
 ```
 
+> **Blue line = training loss. Red dashed line = validation loss.**
+> The x-axis is the epoch number. The y-axis is the cross-entropy loss value - lower is better.
+
+---
+
+#### What Is a Loss Curve?
+
+A **loss curve** is a line graph that plots how the model's error (its "loss") changes after each training epoch. The loss is a single number produced by the **loss function** - a mathematical formula that measures how wrong the model's predictions are. For a classification problem like this one, that formula is **cross-entropy loss**:
+
+- If the model assigns a high probability to the correct class, the loss is **low** (close to 0). The model was confident and right.
+- If the model assigns a low probability to the correct class, the loss is **high**. The model was wrong or uncertain.
+
+There are always **two loss curves** plotted together:
+
+| # | Curve | What Data Is Used | What It Measures |
+|---|---|---|---|
+| 1 | Training loss (blue) | The 800 samples the model learns from directly | How well the model fits the data it was trained on |
+| 2 | Validation loss (red dashed) | The 200 held-out samples the model never trains on | How well the model generalises to unseen data |
+
+The validation loss is the more important signal. Training loss tells you how hard the model is working. Validation loss tells you whether that work is actually useful.
+
+---
+
+#### What the Diagram Is Showing
+
+The chart above is an **idealised** version of what Notebook Section 5 produces when you run the overfitting experiment. Reading it left to right, you are watching the model learn across 200 epochs:
+
+- **Epochs 1-75 (both lines falling together):** This is healthy learning. The model is extracting real patterns from the data and those patterns generalise - both splits improve simultaneously. This is the zone you want to spend most of your training budget in.
+- **Epochs 75-125 (lines separating, validation flattening):** The model is approaching convergence. Training loss is still improving but validation loss has stopped. The model has learned everything genuinely useful from the data and is now starting to specialise to the specific training examples.
+- **Epochs 125-200 (lines diverging - validation rises, training still falls):** This is **overfitting onset**. The model is now memorising noise, quirks, and specific patterns in the training set that do not exist in the real world. Training loss falls because the model gets better at reproducing the training data exactly. Validation loss rises because that memorisation actively hurts performance on unseen data.
+
+---
+
+#### What Each Possible Pattern Means
+
+| # | What You See | What It Means | What to Do |
+|---|---|---|---|
+| 1 | **Both lines fall together and then level off at a low value** | Healthy convergence - this is the ideal outcome | Stop training here or use early stopping to catch this point automatically |
+| 2 | **Both lines keep falling through all epochs with no flattening** | Model has not converged yet - needs more epochs | Train longer or increase the learning rate |
+| 3 | **Both lines are flat and high from the start** | Underfitting - model is too small or learning rate is too low to learn anything | Use a larger model or a higher learning rate |
+| 4 | **Validation rises while training falls** | Overfitting - this is what Diagram 5 shows in the final quarter | Stop earlier (use the best-epoch checkpoint), add dropout, add weight decay, or reduce model size |
+| 5 | **Validation loss is erratic / spiky** | Mini-batch noise - validation set may be too small, or learning rate too high | Increase validation set size or reduce the learning rate |
+
+---
+
+#### Is This the Ideal Loss Curve?
+
+**No.** The curve in Diagram 5 is intentionally showing a **problem**, not a goal. It is the expected result of the overfitting experiment in Notebook Section 5, which uses a large model, clean data, 300 epochs, and no dropout - conditions designed to force overfitting.
+
+The **ideal** loss curve looks like rows 1 in the table above: both lines fall together, converge smoothly, and then plateau at a low stable value with minimal gap between them. That would mean:
+
+- The model learned a generalisable pattern (validation loss is low).
+- Training did not go on so long that memorisation took over (no upward turn on validation).
+- The model is neither underfitted nor overfitted.
+
+The gap between the training and validation lines at any given epoch is called the **generalisation gap**. A small gap means the model behaves almost as well on unseen data as it does on training data - that is the target. The growing gap visible from epoch 125 onward in Diagram 5 is the quantitative measure of how badly the model is overfitting.
+
+---
+
+#### What to Watch For in Your Own Experiments
+
+The single most important habit when training any model is to **always plot both curves together** and watch for these signals:
+
+1. **The moment validation loss stops falling** - that epoch is your best checkpoint. Save it. Everything after that epoch is the model getting worse at generalisation, even if it looks like it is getting better on training data.
+2. **A large and growing gap between the two lines** - the size of that gap tells you how overfit the model is. A gap of 0.30 or more (as seen at epoch 200 in Diagram 5) is a strong signal to stop earlier, reduce model capacity, or add regularisation.
+3. **If both lines keep falling with no sign of flattening** - you have not trained long enough. The model has more to learn. Increase your epoch budget.
+4. **If both lines are high and flat** - the model is not learning at all. Check your learning rate, model architecture, and data pipeline first.
+
 > [!NOTE]
-> The chart above shows an **idealised** trajectory using the `medium` capacity preset at default settings. In practice the curves will be noisier, especially early in training when mini-batch gradient estimates have high variance. Smoother curves are a sign of a larger batch size, stronger regularisation, or a lower learning rate. The exact epoch at which validation loss bottoms out varies between runs and depends on all hyperparameters simultaneously.
+> The chart above shows an **idealised** trajectory using the `medium` capacity preset at default settings. In practice the curves will be noisier, especially early in training when mini-batch gradient estimates have high variance. Smoother curves are a sign of a larger batch size, stronger regularisation, or a lower learning rate. The exact epoch at which validation loss bottoms out varies between runs and depends on all hyperparameters simultaneously. Use the "Finding the Optimal Stopping Point" plot in Notebook Section 3 to identify the best checkpoint for your specific run.
+
+---
+
+### Diagram 6 — Idealised Accuracy Curves Across Epochs
+
+The accuracy curve is the mirror image of the loss curve viewed from the opposite direction - instead of measuring how wrong the model is, it measures how often it is right. Both tell the same story, but accuracy is easier to interpret at a glance (90% correct is more intuitive than a loss of 0.105).
+
+```mermaid
+xychart-beta
+    title "Idealised Accuracy Curves — Train vs Validation (200 Epochs)"
+    x-axis ["E1","E25","E50","E75","E100","E125","E150","E175","E200"]
+    y-axis "Accuracy (%)" 45 --> 100
+    line [52, 68, 80, 89, 94, 96, 97, 98, 99]
+    line [51, 67, 79, 88, 92, 91, 89, 86, 83]
+```
+
+> **Blue line = training accuracy. Orange dashed line = validation accuracy.**
+> Training accuracy climbs all the way to ~99% while validation accuracy peaks around epoch 100 and then slowly drops - the accuracy mirror of the diverging loss curves in Diagram 5.
+
+The growing gap between the two accuracy lines after epoch 100 is the **accuracy generalisation gap** - the same overfitting signal, expressed as a percentage rather than a loss value. A model that is 99% accurate on training data but only 83% accurate on unseen data has learned 16 percentage points worth of noise. That noise is useless in production.
+
+> [!TIP]
+> When validation accuracy stops rising (even if training accuracy keeps climbing), that is your stop signal. The epoch where validation accuracy peaks is the same epoch where validation loss is at its minimum - they always agree. Use whichever curve you find easier to interpret. Most practitioners watch validation loss because it is more sensitive to small changes than accuracy.
+
+---
+
+### Diagram 7 — The Four Training Phases Timeline
+
+Every training run passes through four distinct phases regardless of model size or dataset. The shape of the loss and accuracy curves changes character at each phase boundary. This diagram maps those phases onto a 200-epoch timeline with the expected metric behaviour at each stage.
+
+```mermaid
+gantt
+    title Four Phases of Training — 200 Epoch Run (medium preset, default settings)
+    dateFormat  X
+    axisFormat  Epoch %s
+
+    section Phase 1 - Underfitting
+    Both losses high, falling fast. Boundary is a rough line.   :crit, p1, 1, 30
+
+    section Phase 2 - Learning
+    Both losses fall together. Boundary curves toward moons.    :active, p2, 30, 100
+
+    section Phase 3 - Convergence
+    Losses flatten. Boundary stable. Best generalisation here.  :done, p3, 100, 150
+
+    section Phase 4 - Overfitting
+    Val loss rises. Train loss still falls. Gap widens.         :crit, p4, 150, 200
+```
+
+> [!NOTE]
+> The phase boundaries above are approximate for the `medium` preset at default settings (1,000 samples, noise=0.20, lr=1e-3). With the `overfit` preset the model can reach Phase 4 as early as epoch 30. With the `tiny` preset the model may never leave Phase 1 no matter how many epochs you run.
+
+---
+
+### Diagram 8 — Bias-Variance Tradeoff vs Epoch Count
+
+The fundamental tension in machine learning is between **bias** (being too simple to capture the pattern) and **variance** (being so sensitive to training data that noise is captured as signal). Epoch count directly controls where you sit on this spectrum.
+
+```mermaid
+xychart-beta
+    title "Bias-Variance Tradeoff as Training Progresses"
+    x-axis ["E1","E25","E50","E75","E100","E125","E150","E175","E200"]
+    y-axis "Error Contribution" 0 --> 1.0
+    line [0.95, 0.70, 0.50, 0.32, 0.18, 0.12, 0.09, 0.07, 0.06]
+    line [0.02, 0.05, 0.08, 0.12, 0.18, 0.28, 0.40, 0.54, 0.68]
+```
+
+> **Blue line = bias error (underfitting). Red line = variance error (overfitting).**
+> Total generalisation error is the sum of both lines. The lowest point of that sum - around epoch 100 here - is the sweet spot where the model is neither too rigid nor too flexible.
+
+| # | Zone | Dominant Error | What the Model Is Doing | Remedy |
+|---|---|---|---|---|
+| 1 | Epochs 1-30 | High bias | Too simple - ignores real patterns in the data | Keep training |
+| 2 | Epochs 30-100 | Balanced | Learning real signal - both errors decreasing | Stay in this zone |
+| 3 | Epochs 100-125 | Transition | Bias near zero, variance starting to grow | Best stopping region |
+| 4 | Epochs 125-200 | High variance | Memorising noise - variance dominates | Stop, regularise, or reduce model size |
+
+---
+
+### Diagram 9 — Cosine Annealing Learning Rate Schedule
+
+The learning rate is the single most important hyperparameter in gradient descent. This project uses **cosine annealing** - a schedule that starts the learning rate high (for fast early learning) and smoothly reduces it to near zero following a cosine curve, allowing precise fine-tuning near convergence.
+
+```mermaid
+xychart-beta
+    title "Cosine Annealing — Learning Rate over 200 Epochs (lr_max=1e-3)"
+    x-axis ["E1","E25","E50","E75","E100","E125","E150","E175","E200"]
+    y-axis "Learning Rate" 0 --> 0.0012
+    line [0.001, 0.00095, 0.00079, 0.00055, 0.0005, 0.00045, 0.00021, 0.00005, 0.00001]
+```
+
+> The learning rate starts at `1e-3` and decays following `lr = lr_max * 0.5 * (1 + cos(pi * epoch / total_epochs))`. By epoch 200 it is near zero, producing very small, precise weight updates that can no longer destabilise the converged solution.
+
+Why this matters for the loss curves:
+
+- **Early epochs (high lr):** Large weight updates mean the model covers a lot of ground quickly - loss falls steeply. There is a risk of overshooting a good minimum.
+- **Middle epochs (medium lr):** Updates are moderate - the model is refining rather than exploring. Loss curve slope gradually flattens.
+- **Late epochs (low lr):** Updates are tiny - the model can no longer escape its current configuration even if it wanted to. Loss curve becomes nearly flat. This is why the training loss curve in Diagram 5 levels off rather than continuing to fall indefinitely.
+
+> [!NOTE]
+> If validation loss starts rising while the learning rate is still high, that is a stronger overfitting signal than if it rises only after the learning rate has decayed to near zero. A low learning rate by itself can mask overfitting by preventing further weight changes - the model is overfit but frozen in place.
+
+---
+
+### Diagram 10 — Gradient Descent: One Weight Update Step
+
+This diagram zooms in to the single most fundamental operation in all of deep learning - one weight update step for one parameter. Every epoch contains approximately 16 of these steps (one per mini-batch). Over 200 epochs that is roughly 3,200 individual updates per weight.
+
+```mermaid
+flowchart LR
+    A(["w = 0.45\n(current weight value)"])
+    B["Forward pass\ncomputes loss = 0.847"]
+    C["Backward pass\ncomputes ∂loss/∂w = +0.32\n(positive: increasing w raises loss)"]
+    D["Adam optimiser\napplies adaptive lr\neffective_step ≈ 0.0008"]
+    E(["w = 0.45 - 0.0008\nw = 0.4492\n(weight nudged down)"])
+
+    A --> B --> C --> D --> E
+
+    style A fill:#DBEAFE,stroke:#2563EB,color:#1e3a5f
+    style E fill:#DCFCE7,stroke:#16A34A,color:#14532d
+    style C fill:#FEF9C3,stroke:#b45309,color:#713f12
+```
+
+> The gradient `+0.32` tells the optimiser: "this weight is currently pulling the loss upward." The optimiser subtracts a small fraction of that gradient from the weight. After thousands of such nudges across all ~4,700 weights, the model reaches a configuration where no single weight can be adjusted to lower the loss further - that is convergence.
+
+The three outcomes of this process across epochs:
+
+- **Too few epochs:** Each weight only gets a handful of nudges - not enough to move far from its random starting value. The model is still largely random. High loss, poor accuracy.
+- **Right number of epochs:** After ~3,200 nudges the weights have settled into a configuration that correctly separates the two moon classes. Loss is low and stable on both splits.
+- **Too many epochs:** The nudges continue past the point of useful learning. Weights start encoding the exact positions of individual training points rather than the smooth underlying curve. Validation loss climbs. Overfitting.
 
 ---
 
