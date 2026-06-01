@@ -1,0 +1,45 @@
+name: Bug report
+description: Report a reproducible problem in the training, evaluation, or visualization workflow.
+title: "[Bug]: "
+labels: [bug, triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. Please include enough detail for someone else to reproduce the problem locally.
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Describe the failure and what you expected instead.
+      placeholder: Training exits at epoch 12 with a device mismatch error.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Include the command you ran, inputs, and any relevant configuration.
+      placeholder: |
+        1. Activate the virtual environment
+        2. Run python -m src.main --epochs 50
+        3. Observe the error after checkpoint save
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs or traceback
+      description: Paste the full error or warning output.
+      render: shell
+    validations:
+      required: false
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Python version, and device if relevant.
+      placeholder: Ubuntu 24.04, Python 3.12, CPU
+    validations:
+      required: false

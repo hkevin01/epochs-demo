@@ -1,0 +1,32 @@
+name: Feature request
+description: Suggest an improvement to the training demo, tooling, or documentation.
+title: "[Feature]: "
+labels: [enhancement, triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for ideas that improve the project or make it easier to understand and contribute to.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or opportunity
+      description: Explain the gap this feature would address.
+      placeholder: It is hard to compare checkpoint behavior across different model sizes from the CLI.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the change you want to see.
+      placeholder: Add a compare subcommand that loads multiple histories and plots them together.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Note workarounds or other options you evaluated.
+    validations:
+      required: false
