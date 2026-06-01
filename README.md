@@ -1,14 +1,18 @@
 # 🧠 Epochs Demo — Understanding Training Epochs in PyTorch
 
-![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python&logoColor=white)
-![PyTorch](https://img.shields.io/badge/PyTorch-2.0%2B-EE4C2C?logo=pytorch&logoColor=white)
-![License](https://img.shields.io/badge/License-MIT-green)
-![Status](https://img.shields.io/badge/Status-Production%20Ready-brightgreen)
-![Matplotlib](https://img.shields.io/badge/Matplotlib-3.7%2B-informational?logo=matplotlib)
-![scikit--learn](https://img.shields.io/badge/scikit--learn-1.3%2B-F7931E?logo=scikit-learn&logoColor=white)
-![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://python.org)
+[![PyTorch](https://img.shields.io/badge/PyTorch-2.0%2B-EE4C2C?logo=pytorch&logoColor=white)](https://pytorch.org)
+[![License: MIT](https://img.shields.io/badge/License-MIT-22c55e?logo=opensourceinitiative&logoColor=white)](LICENSE)
+[![Status](https://img.shields.io/badge/Status-Production%20Ready-22c55e)](https://github.com)
+[![Matplotlib](https://img.shields.io/badge/Matplotlib-3.7%2B-11557c?logo=matplotlib)](https://matplotlib.org)
+[![scikit-learn](https://img.shields.io/badge/scikit--learn-1.3%2B-F7931E?logo=scikit-learn&logoColor=white)](https://scikit-learn.org)
+[![NumPy](https://img.shields.io/badge/NumPy-1.24%2B-013243?logo=numpy&logoColor=white)](https://numpy.org)
+[![Jupyter](https://img.shields.io/badge/Jupyter-Notebook-F37626?logo=jupyter&logoColor=white)](https://jupyter.org)
+[![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey)](https://github.com)
+[![Code Style](https://img.shields.io/badge/Code%20Style-PEP%208-blue)](https://peps.python.org/pep-0008/)
+[![PRs Welcome](https://img.shields.io/badge/PRs-Welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-> A complete, runnable machine-learning project that **visually demonstrates** what training epochs are, why they matter, how they drive a model from random noise to a learned decision boundary, and what happens when you use too few or too many of them.
+> A complete, runnable machine-learning project that **visually demonstrates** what training epochs are, why they matter, how they drive a model from random noise to a learned decision boundary, and what happens when you train for too few or too many epochs. Every concept is shown through interactive plots, decision boundary snapshots, and an animated GIF — not just described in theory.
 
 ---
 
@@ -18,6 +22,7 @@
 - [Why Are Multiple Epochs Needed?](#why-are-multiple-epochs-needed)
 - [The Four Phases of Training](#the-four-phases-of-training)
 - [Tech Stack and Architecture](#tech-stack-and-architecture)
+- [System Architecture Diagrams](#system-architecture-diagrams)
 - [Project Structure](#project-structure)
 - [Module Reference](#module-reference)
 - [Quick Start](#quick-start)
@@ -26,6 +31,8 @@
 - [How to Interpret the Visualizations](#how-to-interpret-the-visualizations)
 - [Dataset Details](#dataset-details)
 - [Model Capacity Presets](#model-capacity-presets)
+- [Checkpoint Format](#checkpoint-format)
+- [Hyperparameter Effects](#hyperparameter-effects)
 - [Experiments Guide](#experiments-guide)
 - [Dependencies](#dependencies)
 - [Troubleshooting](#troubleshooting)
@@ -35,207 +42,270 @@
 
 ## What Is an Epoch?
 
-An **epoch** is one complete, sequential pass through the entire training dataset. During a single epoch, the model is presented with every training sample exactly once, in **mini-batches** — small subsets of the full dataset that are processed together. For each mini-batch the model computes a **forward pass** (feeding inputs through the network to produce predictions), measures its error using a **loss function** (cross-entropy in this project, which quantifies how far the predicted probabilities are from the true labels), runs a **backward pass** to compute **gradients** (the direction and magnitude in which each weight should change to reduce the loss), and then updates its weights using the chosen **optimiser** (Adam, which adapts the learning rate individually for each parameter). After all mini-batches in the dataset have been processed, one epoch is complete.
+An **epoch** is one complete, sequential pass through the entire training dataset. During a single epoch, the model is presented with every training sample exactly once, organised into **mini-batches** — small subsets of the full dataset that are processed together. For each mini-batch the model computes a **forward pass** (feeding inputs through the network to produce predictions), measures its error with a **loss function** (cross-entropy in this project, which quantifies how far predicted probabilities are from the true labels), runs a **backward pass** to compute **gradients** (the direction and magnitude in which each weight should change to reduce the loss), and then updates its weights using the chosen **optimiser** (Adam, which adapts the learning rate individually for each parameter). Once every mini-batch in the dataset has been processed, one epoch is complete and the cycle begins again.
 
-The concept of an epoch is fundamental because neural networks do not — and cannot — learn everything they need to know from a single pass over the data. **Gradient descent** is an iterative optimisation algorithm: each step moves the weights only a small distance in the direction that reduces the loss. A single epoch gives the model one round of feedback from every sample. Repeating this process over many epochs allows the model to progressively refine its internal representations, correct past mistakes, and **converge** toward a stable, low-loss solution where the weights no longer change significantly from epoch to epoch.
+The concept of an epoch is fundamental because neural networks do not — and cannot — learn everything they need from a single pass over the data. **Gradient descent** is an iterative optimisation algorithm: each step moves the model's weights only a small distance toward a lower-loss configuration. A single epoch delivers one round of feedback from every sample, but the adjustments it produces are far too small to bring a randomly initialised model to a useful state. Repeating this process over many epochs allows the model to progressively refine its internal representations, correct mistakes from earlier rounds, and **converge** toward a stable, low-loss configuration where the weights stop changing significantly from epoch to epoch.
 
 > [!NOTE]
-> An epoch is **not** the same as a gradient update step. A **gradient update step** (also called an iteration) happens once per mini-batch — the weights are adjusted after seeing just `batch_size` samples. An epoch contains many gradient steps. If your dataset has 1,000 samples and you use a batch size of 64, each epoch contains approximately 16 gradient update steps. The number of updates per epoch scales with `ceil(n_samples / batch_size)`.
+> An epoch is **not** the same as a gradient update step. A **gradient update step** (also called an iteration or a step) happens once per mini-batch — the weights are adjusted after seeing just `batch_size` samples. An epoch contains many gradient steps. If your dataset has 1,000 samples and you use a batch size of 64, each epoch contains approximately `ceil(1000 / 64) = 16` gradient update steps. This distinction matters when comparing training speed between runs with different batch sizes — a run with batch size 16 performs 4x more weight updates per epoch than one with batch size 64, even if both process the same data.
+
+> [!TIP]
+> The best mental model for an epoch is a student studying a textbook. The first time through (epoch 1), they absorb the broad outlines but miss many details. The second time, they understand more connections. By the tenth pass, they have internalized the material deeply — but if they keep re-reading, they might start memorising specific sentence phrasings rather than the underlying ideas. Training epochs work exactly the same way.
 
 ---
 
 ## Why Are Multiple Epochs Needed?
 
-When a neural network is first initialised, its weights are assigned small random values. This means the model's initial predictions are essentially random guesses — the **loss** is high and there is no meaningful structure in what the network outputs. After the first epoch, the model has seen every training sample once and has nudged its weights in the right direction through backpropagation — but a single epoch produces only small adjustments, and the model is still far from optimal.
+When a neural network is first initialised, its weights are assigned small random values drawn from a carefully calibrated distribution. This means the model's initial predictions are essentially random guesses — the **loss** is high, close to the theoretical maximum for the loss function, and there is no meaningful structure in what the network outputs. The first epoch nudges the weights in the right direction for every sample in the dataset, but the individual nudges are small and the model is still far from capturing any real pattern.
 
-Over successive epochs, the model experiences the same data from different random mini-batch orderings (because `shuffle=True` in the DataLoader). This **stochastic shuffling** is healthy: it introduces variability in the gradient estimates so the optimiser does not get stuck following the exact same path every epoch, and it prevents the model from memorising the sequence of training examples rather than their content. The **cosine annealing learning-rate scheduler** used in this project gradually reduces the learning rate following a cosine curve over all epochs — allowing large, exploratory weight updates early in training when the model is far from its optimum, and progressively smaller, fine-grained adjustments later when the model is close to convergence and large steps would overshoot.
+Over successive epochs, the model experiences the same data from different random mini-batch orderings (because `shuffle=True` in the DataLoader). This **stochastic shuffling** is important: it introduces controlled variability into the gradient estimates, which prevents the optimiser from following the exact same update path every epoch and prevents the model from memorising the sequence of training examples rather than their content. Each epoch with a new shuffling gives the optimiser a slightly different view of the training set, helping it explore the loss landscape more effectively.
+
+The **cosine annealing learning-rate scheduler** used in this project gradually reduces the learning rate following a cosine curve over the full training run — allowing large, exploratory weight updates early in training when the model is far from its optimum, and progressively smaller, fine-grained adjustments later when the model is near convergence and large steps would overshoot the minimum. This automatic decay removes one of the most tedious hyperparameter decisions in deep learning: figuring out when to reduce the learning rate and by how much.
 
 > [!IMPORTANT]
-> Training for **too few** epochs leaves the model in an **underfitted** state — it has not yet discovered the underlying pattern in the data and will perform poorly on both training and validation data because its weights have not been sufficiently adjusted away from their random initialisation. Training for **too many** epochs causes the model to memorise training-set noise rather than the true signal, a phenomenon called **overfitting**, where training accuracy keeps rising but validation accuracy plateaus or falls because the model has specialised too tightly to the exact examples it was trained on.
+> Training for **too few** epochs leaves the model in an **underfitted** state. It has not yet discovered the underlying pattern in the data and will perform poorly on both training and validation data because its weights have not been sufficiently adjusted away from their random initialisation. Training for **too many** epochs causes the model to memorise training-set noise rather than the true signal — a phenomenon called **overfitting** — where training accuracy keeps rising but validation accuracy plateaus or falls because the model has specialised too tightly to the exact training examples it was shown.
 
-The central tension between underfitting and overfitting — known as the **bias-variance tradeoff** — makes epoch selection one of the most critical **hyperparameter** decisions in deep learning. A hyperparameter is any configuration value that is set before training begins and is not learned from the data itself; epoch count, learning rate, and batch size are all hyperparameters. This project exists to make that tension visible and measurable.
+The central tension between underfitting and overfitting — known as the **bias-variance tradeoff** — makes epoch selection one of the most important **hyperparameter** decisions in deep learning. A hyperparameter is any configuration value set before training begins that controls the training process but is not itself learned from data. Epoch count, learning rate, batch size, dropout rate, and model size are all hyperparameters. This project exists to make the bias-variance tension visible, measurable, and tunable through a simple command-line interface.
+
+> [!CAUTION]
+> There is no single correct number of epochs that works for all problems. The right epoch count depends on your dataset size, model capacity, learning rate, regularisation strength, and noise level. Always monitor the **validation loss** curve — not the training loss — to decide when to stop. The validation loss is the only signal that tells you how well the model generalises to unseen data.
 
 ---
 
 ## The Four Phases of Training
 
-As epochs increase, every model passes through four recognisable phases. Understanding which phase you are in — by reading the loss and accuracy curves — is the core skill this project teaches.
+As epochs increase, every model trained with gradient descent passes through four recognisable phases. Understanding which phase you are in — by reading the loss and accuracy curves — is the core practical skill this project teaches. Each phase has a distinct signature on the metric curves and a distinct appearance on the decision boundary plot.
 
 | # | Phase | Epoch Range | Train Loss | Val Loss | Train Acc | Val Acc | Verdict |
 |---|---|---|---|---|---|---|---|
-| <sub>1</sub> | <sub>Underfitting</sub> | <sub>First ~10-20%</sub> | <sub>High, falling fast</sub> | <sub>High, falling fast</sub> | <sub>Low</sub> | <sub>Low</sub> | <sub>Keep training - model is still learning basics</sub> |
-| <sub>2</sub> | <sub>Learning</sub> | <sub>20% - 50%</sub> | <sub>Falling steadily</sub> | <sub>Falling steadily</sub> | <sub>Rising</sub> | <sub>Rising</sub> | <sub>Healthy - both splits improving together</sub> |
-| <sub>3</sub> | <sub>Convergence</sub> | <sub>50% - 75%</sub> | <sub>Low and slowing</sub> | <sub>Low, near-stable</sub> | <sub>Near peak</sub> | <sub>Near peak</sub> | <sub>Optimal - best generalisation lives here</sub> |
-| <sub>4</sub> | <sub>Overfitting</sub> | <sub>75% +</sub> | <sub>Still falling slightly</sub> | <sub>Rising</sub> | <sub>Still rising</sub> | <sub>Falling</sub> | <sub>Danger zone - model memorising noise</sub> |
+| 1 | Underfitting | First ~10-20% | High, falling fast | High, falling fast | Low | Low | Keep training - model is still learning basics |
+| 2 | Learning | 20% - 50% | Falling steadily | Falling steadily | Rising | Rising | Healthy - both splits improving together |
+| 3 | Convergence | 50% - 75% | Low and slowing | Low, near-stable | Near peak | Near peak | Optimal - best generalisation lives here |
+| 4 | Overfitting | 75%+ | Still falling slightly | Rising | Still rising | Falling | Danger zone - model memorising noise |
 
 > [!WARNING]
-> The exact epoch at which each phase begins depends heavily on your model capacity, learning rate, dataset size, and noise level. There is no universal number. Always monitor validation loss — not training loss — to make decisions about when to stop.
+> The exact epoch at which each phase begins depends heavily on your model capacity, learning rate, dataset size, and noise level. The percentages above are approximate guidelines for the default settings only. There is no universal boundary. A tiny model may spend the entire training run in the Underfitting phase regardless of epoch count. An over-parameterised model with no regularisation may skip directly to Overfitting after just a handful of epochs.
+
+**Phase 1 — Underfitting:** During the first phase the model is recovering from random initialisation. Both training and validation loss fall quickly because even small adjustments to randomly initialised weights produce large improvements. The decision boundary at this stage is a crude, nearly straight line that does not follow the moon shapes at all. Accuracy is well below the theoretical ceiling. The right action is always to continue training — there is no benefit to stopping here.
+
+**Phase 2 — Learning:** During the learning phase both loss curves continue falling together and the decision boundary visibly starts to curve and wrap around the moon shapes. The model is genuinely extracting generalisable patterns from the data, and the roughly parallel movement of training and validation curves confirms that the model is not memorising. This is the healthiest phase of training and where you want to spend most of your training budget.
+
+**Phase 3 — Convergence:** As the learning rate decays and the gradients become smaller, the loss curves flatten out and the decision boundary stops changing significantly from epoch to epoch. This is the optimal stopping region — the model has found a good solution and any further training provides diminishing returns. Validation loss is at or near its minimum, which is the true signal that generalisation is at its peak.
+
+**Phase 4 — Overfitting:** In the final phase the training loss continues to creep down slightly while the validation loss turns upward. On the decision boundary plot, the boundary begins to develop unnecessary kinks and bulges that thread through individual training points rather than following the smooth underlying pattern. The model is memorising noise. Training accuracy approaches 100% while validation accuracy falls — the gap between the two is the canonical signature of overfitting.
 
 ---
 
 ## Tech Stack and Architecture
 
-This project is built on a carefully chosen stack that balances simplicity, speed, and educational clarity. Every library was selected because it is the industry standard for its role and requires minimal boilerplate.
+This project is built on a carefully chosen stack that balances simplicity, speed, and educational clarity. Every library was selected because it is the industry standard for its role, has a well-documented API, and requires minimal boilerplate. Understanding why each library is present — and what it does — gives you a solid foundation for real-world ML projects, where the same tools appear again and again.
 
 ### Technology Choices
 
-| Layer | Library | Version | Why It Was Chosen |
-|---|---|---|---|
-| <sub>Deep Learning</sub> | <sub>PyTorch</sub> | <sub>2.0+</sub> | <sub>Dynamic computation graph, intuitive API, industry-standard for research and production</sub> |
-| <sub>Dataset Generation</sub> | <sub>scikit-learn</sub> | <sub>1.3+</sub> | <sub>make_moons produces a non-linear 2-D boundary that makes epoch effects visually obvious</sub> |
-| <sub>Numerical Arrays</sub> | <sub>NumPy</sub> | <sub>1.24+</sub> | <sub>Bridge between scikit-learn arrays and PyTorch tensors; meshgrid for decision boundary plots</sub> |
-| <sub>Visualisation</sub> | <sub>Matplotlib</sub> | <sub>3.7+</sub> | <sub>Full control over every plot element; PillowWriter for GIF animation export</sub> |
-| <sub>Progress Bars</sub> | <sub>tqdm</sub> | <sub>4.65+</sub> | <sub>Live per-epoch metrics in the terminal without custom logging boilerplate</sub> |
-| <sub>Interactive Analysis</sub> | <sub>Jupyter</sub> | <sub>1.0+</sub> | <sub>Notebook for post-hoc exploration of saved history and checkpoint comparison</sub> |
+| # | Layer | Library | Version | Why It Was Chosen | What It Does Here |
+|---|---|---|---|---|---|
+| 1 | Deep Learning Framework | PyTorch | 2.0+ | Dynamic computation graph, intuitive Python-first API, industry standard for research and increasingly for production | Defines the MLP model, runs forward and backward passes, manages tensors and devices |
+| 2 | Dataset Generation | scikit-learn | 1.3+ | `make_moons` produces a non-linear 2-D boundary that makes epoch effects visually obvious; no file I/O required | Generates the training data with a single function call |
+| 3 | Numerical Arrays | NumPy | 1.24+ | The universal bridge between scikit-learn arrays and PyTorch tensors; meshgrid for decision boundary plots | Builds the inference grid for boundary plots; handles dtype conversions |
+| 4 | Visualisation | Matplotlib | 3.7+ | Full programmatic control over every plot element; PillowWriter for GIF animation export | Draws all loss curves, accuracy curves, decision boundary plots, and the animated GIF |
+| 5 | Progress Display | tqdm | 4.65+ | Live per-epoch metrics in the terminal without custom logging boilerplate | Shows epoch number, train/val loss, and accuracy as a progress bar |
+| 6 | Interactive Analysis | Jupyter | 1.0+ | Allows post-hoc exploration of saved history and checkpoint comparison without re-running training | Powers `notebooks/epoch_analysis.ipynb` |
+| 7 | Package Management | pip + venv | stdlib | Zero-dependency, universally available, reproducible via `requirements.txt` | Creates the isolated environment and installs all packages |
 
-### System Architecture
+> [!NOTE]
+> PyTorch's **dynamic computation graph** (also called eager mode) means the graph is built at runtime as Python code executes, making debugging straightforward — you can insert `print()` statements or use a debugger anywhere in the forward pass and inspect intermediate tensor values. Older frameworks like TensorFlow 1.x used static graphs that were compiled before execution, making debugging much harder. PyTorch 2.0 introduced `torch.compile()` for optional static optimisation, but this project uses eager mode for maximum transparency.
 
-The project follows a clean pipeline architecture where each module has a single, well-defined responsibility. Data flows in one direction: from raw arrays through training to persisted artifacts, then into visualisation. No module has circular dependencies.
+---
+
+## System Architecture Diagrams
+
+### Diagram 1 — End-to-End Data Pipeline
+
+The project follows a clean pipeline architecture where each module has a single, well-defined responsibility. Data flows in one direction: from raw arrays through training to persisted artifacts, then into visualisation. No module has circular dependencies. The diagram below shows every data artifact and which module produces or consumes it.
 
 ```mermaid
 flowchart TD
-    A([fa:fa-database Raw Dataset\nmake_moons]) -->|X, y arrays| B[data.py\nDataLoaders]
-    B -->|train_loader\nval_loader| C[train.py\nTraining Loop]
-    C -->|history dict| D[visualize.py\nPlots & Animation]
+    A([🗄️ Raw Dataset\nmake_moons]) -->|X_all, y_all arrays| B[data.py\nDataLoaders]
+    B -->|train_loader| C[train.py\nTraining Loop]
+    B -->|val_loader| C
+    B -->|X_all, y_all| D[visualize.py\nPlots & Animation]
+    C -->|history dict| D
     C -->|.pt files| E[(checkpoints/\nepoch_XXXX.pt)]
-    C -->|history| F[(outputs/\nhistory.json)]
+    C -->|history.json| F[(outputs/\nhistory.json)]
     E -->|load_checkpoint| D
     F -->|load_history| D
-    D -->|PNG / GIF| G([fa:fa-image outputs/\nloss_curve.png\naccuracy_curve.png\nepoch_snapshots.png])
-    H[model.py\nMLP Definition] -->|nn.Module| C
-    I[utils.py\nSeed / Device / IO] -.->|helpers| C
-    I -.->|helpers| D
-    J([main.py\nCLI Entry Point]) -->|orchestrates| B
-    J -->|orchestrates| C
-    J -->|orchestrates| D
+    D -->|PNG / GIF| G([🖼️ outputs/\nloss_curve.png\naccuracy_curve.png\nepoch_snapshots.png\ntraining_animation.gif])
+    H[model.py\nMLP Definition] -->|nn.Module instance| C
+    I[utils.py\nSeed / Device / IO] -.->|seed, device, save/load| C
+    I -.->|load_checkpoint, load_history| D
+    J([⌨️ main.py\nCLI Entry Point]) -->|args| B
+    J -->|args, model| C
+    J -->|history, model| D
+
+    style A fill:#DBEAFE,stroke:#2563EB,color:#1e3a5f
+    style G fill:#DCFCE7,stroke:#16A34A,color:#14532d
+    style J fill:#FEF9C3,stroke:#CA8A04,color:#713f12
+    style E fill:#F3E8FF,stroke:#7C3AED,color:#3b0764
+    style F fill:#F3E8FF,stroke:#7C3AED,color:#3b0764
 ```
 
-### Training Loop Internals
+> [!NOTE]
+> The dashed arrows from `utils.py` represent helper calls rather than primary data flow. `utils.py` does not own any data — it only provides functions that other modules call. This design keeps each module focused on a single responsibility and makes the codebase easy to navigate.
 
-The training loop in `train.py` executes the following sequence every epoch. Understanding this cycle is essential for understanding what "more epochs" actually means at a mechanical level.
+---
+
+### Diagram 2 — Training Loop Internals (Per Epoch)
+
+The training loop in `train.py` executes the following sequence every epoch. Understanding this cycle at the mechanical level is essential for understanding what "training for more epochs" actually does to a model. Each mini-batch produces one weight update; each epoch produces one entry in the history dictionary.
 
 ```mermaid
 sequenceDiagram
     participant DL as DataLoader
-    participant M  as Model
+    participant M  as Model (MLP)
     participant L  as Loss (CrossEntropy)
     participant O  as Optimiser (Adam)
     participant S  as Scheduler (CosineAnnealing)
     participant H  as History Dict
 
-    loop Every Epoch
-        loop Every Mini-Batch
-            DL->>M: X_batch (features)
-            M->>L: logits (raw predictions)
-            DL->>L: y_batch (true labels)
-            L->>O: scalar loss value
-            O->>M: zero_grad()
-            L->>M: loss.backward() — compute gradients
-            O->>M: step() — update weights
-        end
-        S->>O: step() — decay learning rate
-        M->>H: record train_loss, train_acc
-        Note over M,H: Run val loop (no gradients)
-        M->>H: record val_loss, val_acc
+    Note over DL,H: ── Training Phase ──
+    loop Every Mini-Batch in Training Set
+        DL->>M: X_batch (shape: batch×2)
+        M->>L: logits (shape: batch×2)
+        DL->>L: y_batch (shape: batch)
+        L-->>O: scalar loss value
+        O->>M: zero_grad() — clear previous gradients
+        L->>M: loss.backward() — compute new gradients
+        O->>M: step() — update weights
     end
+    M->>H: append mean train_loss, train_acc
+
+    Note over DL,H: ── Validation Phase (no gradient updates) ──
+    loop Every Mini-Batch in Validation Set
+        DL->>M: X_val_batch
+        M->>L: val_logits
+        DL->>L: y_val_batch
+        L-->>H: accumulate val loss
+    end
+    M->>H: append mean val_loss, val_acc
+    S->>O: step() — decay learning rate for next epoch
 ```
 
-### Decision Boundary Generation
+> [!IMPORTANT]
+> The call to `optimizer.zero_grad()` at the start of each mini-batch is critical. PyTorch accumulates (adds to) gradients by default rather than overwriting them. If you forget `zero_grad()`, gradients from previous mini-batches contaminate the current update, causing incorrect and unstable training. This is a common source of hard-to-debug training bugs.
 
-Producing a decision boundary plot requires running inference on a dense grid of points covering the feature space. The grid is constructed, passed through the model, and the resulting probabilities are reshaped into a 2-D array for `contourf`.
+---
+
+### Diagram 3 — Decision Boundary Generation
+
+Producing a decision boundary plot requires running inference on a dense grid of points that tiles the entire feature space. The grid is constructed from the data range, converted to a PyTorch tensor, passed through the trained model, and the resulting probabilities are reshaped into a 2-D array for `matplotlib.contourf`. The coloured surface shows the model's confidence across the feature space.
 
 ```mermaid
 flowchart LR
-    A[X feature array\nshape N x 2] -->|min/max + margin| B[Build meshgrid\nresolution x resolution]
-    B -->|flatten to M x 2| C[float32 tensor\nto device]
-    C -->|model forward| D[logits M x 2]
-    D -->|softmax col 1| E[P class=1\nshape M]
-    E -->|reshape| F[Z grid\nresolution x resolution]
-    F -->|contourf| G[Decision Boundary\nPNG]
+    A["📐 X feature array\nshape: N × 2"] -->|min/max + 0.3 margin| B["Build meshgrid\n300 × 300 resolution"]
+    B -->|flatten to 90,000 × 2| C["Convert to float32\ntensor on device"]
+    C -->|model forward pass\ntorch.no_grad| D["logits\nshape: 90,000 × 2"]
+    D -->|softmax → column 1| E["P(class=1)\nshape: 90,000"]
+    E -->|reshape| F["Z probability grid\n300 × 300"]
+    F -->|matplotlib contourf| G["🗺️ Decision Boundary PNG\nwith scatter overlay"]
+
+    style A fill:#DBEAFE,stroke:#2563EB
+    style G fill:#DCFCE7,stroke:#16A34A
 ```
 
-### Model Capacity Spectrum
+> [!TIP]
+> The 300×300 resolution (90,000 inference points) was chosen to produce smooth-looking contours without excessive computation time. On CPU this inference pass typically takes under 10 ms for the medium model. If you want sharper boundaries at the cost of more computation, you can increase the resolution in `visualize.py` — look for the `resolution=300` parameter in `plot_decision_boundary`.
 
-The five model presets span a wide range of expressiveness. A "tiny" model has so few parameters it cannot represent the moon boundary regardless of epoch count — a structural underfitting case. The "overfit" model has far more parameters than needed and will memorise noise given enough epochs.
+---
+
+### Diagram 4 — Model Capacity Spectrum
+
+The five model presets span a wide range of expressiveness — from a network so small it cannot represent the moon boundary regardless of epoch count, to a network so large it will memorise noise within the first hundred epochs. The capacity preset controls hidden layer widths and dropout rate.
 
 ```mermaid
 graph LR
-    T["tiny\n8 units\n~150 params"]:::tiny
-    S["small\n32→16\n~700 params"]:::small
-    M["medium\n64→64\n~4,700 params"]:::medium
-    L["large\n128→128→64\n~26,000 params"]:::large
-    O["overfit\n256→256→256→128\n~200,000 params"]:::overfit
+    T["🔵 tiny\n[8]\n~150 params\nNo dropout"]:::tiny
+    S["🟢 small\n[32→16]\n~700 params\nNo dropout"]:::small
+    M["🟡 medium\n[64→64]\n~4,700 params\nDropout 10%"]:::medium
+    L["🟠 large\n[128→128→64]\n~26,000 params\nDropout 20%"]:::large
+    O["🔴 overfit\n[256→256→256→128]\n~200,000 params\nNo dropout"]:::overfit
 
     T -->|more capacity| S
     S -->|more capacity| M
     M -->|more capacity| L
     L -->|more capacity| O
 
-    classDef tiny    fill:#90CAF9,stroke:#1565C0,color:#000
-    classDef small   fill:#A5D6A7,stroke:#2E7D32,color:#000
-    classDef medium  fill:#FFF176,stroke:#F9A825,color:#000
-    classDef large   fill:#FFCC80,stroke:#E65100,color:#000
-    classDef overfit fill:#EF9A9A,stroke:#B71C1C,color:#000
+    classDef tiny    fill:#DBEAFE,stroke:#1d4ed8,color:#1e3a5f,font-weight:bold
+    classDef small   fill:#DCFCE7,stroke:#15803d,color:#14532d,font-weight:bold
+    classDef medium  fill:#FEF9C3,stroke:#b45309,color:#713f12,font-weight:bold
+    classDef large   fill:#FFEDD5,stroke:#c2410c,color:#431407,font-weight:bold
+    classDef overfit fill:#FEE2E2,stroke:#b91c1c,color:#450a0a,font-weight:bold
 ```
 
-### Epoch Effect Summary
+> [!WARNING]
+> The `overfit` preset has ~200,000 parameters for a dataset with only 1,000 points and 2 input features. This ratio (200:1) is deliberately extreme. In production, over-parameterisation at this scale on a small dataset will always produce severe overfitting unless strong regularisation is applied. The `overfit` preset deliberately removes Dropout to demonstrate this failure mode clearly.
 
-This diagram shows how the relationship between train and validation metrics changes across the four training phases.
+---
+
+### Diagram 5 — Idealised Loss Curves Across Epochs
+
+This chart visualises the expected shape of training and validation loss across the full 200-epoch run at default settings. The two lines diverge in the final quarter of training, which is the visual signature of overfitting onset. Note that the validation line rises while the training line continues to fall — this is the exact pattern to watch for in your own experiments.
 
 ```mermaid
 xychart-beta
-    title "Idealised Loss Curves Across Epochs"
+    title "Idealised Loss Curves — Train vs Validation (200 Epochs)"
     x-axis ["E1","E25","E50","E75","E100","E125","E150","E175","E200"]
-    y-axis "Loss" 0 --> 1.2
-    line [1.1, 0.7, 0.45, 0.28, 0.18, 0.13, 0.10, 0.09, 0.08]
-    line [1.1, 0.68, 0.44, 0.27, 0.20, 0.22, 0.27, 0.33, 0.40]
+    y-axis "Cross-Entropy Loss" 0 --> 1.2
+    line [1.10, 0.70, 0.45, 0.28, 0.18, 0.13, 0.10, 0.09, 0.08]
+    line [1.10, 0.68, 0.44, 0.27, 0.20, 0.22, 0.27, 0.33, 0.40]
 ```
 
-> [!TIP]
-> The xychart above shows an **idealised** loss trajectory. In practice the curves are noisier, especially early in training. Smooth curves are a sign of a sufficiently large batch size and a well-tuned learning rate.
+> [!NOTE]
+> The chart above shows an **idealised** trajectory using the `medium` capacity preset at default settings. In practice the curves will be noisier, especially early in training when mini-batch gradient estimates have high variance. Smoother curves are a sign of a larger batch size, stronger regularisation, or a lower learning rate. The exact epoch at which validation loss bottoms out varies between runs and depends on all hyperparameters simultaneously.
 
 ---
 
 ## Project Structure
 
+The repository follows a clean separation between source code, notebooks, generated artifacts, and configuration files. Every folder and file has a single purpose. The `outputs/` and `checkpoints/` directories are generated at runtime and are excluded from version control by `.gitignore`.
+
 ```
 epochs-demo/
-├── README.md                    ← This file
-├── CONTRIBUTING.md              ← Contribution workflow and expectations
-├── .gitignore                   ← Git exclusions for local and generated files
-├── .github/                     ← GitHub issue and pull request templates
-│   ├── ISSUE_TEMPLATE/
-│   │   ├── bug_report.yml
-│   │   ├── feature_request.yml
-│   │   └── config.yml
-│   └── PULL_REQUEST_TEMPLATE.md
-├── requirements.txt             ← Pinned dependency list
-├── .venv/                       ← Virtual environment (not committed)
+├── README.md                      - This file
+├── CONTRIBUTING.md                - Contribution workflow and expectations
+├── .gitignore                     - Git exclusions for local and generated files
+├── requirements.txt               - Pinned dependency list
 │
-├── src/                         ← All source code
-│   ├── data.py                  ← Dataset generation and DataLoader creation
-│   ├── model.py                 ← MLP architecture + capacity factory
-│   ├── train.py                 ← Training loop with checkpointing
-│   ├── evaluate.py              ← Post-training metrics and report
-│   ├── visualize.py             ← All plotting and animation functions
-│   ├── utils.py                 ← Seeding, device detection, checkpoint I/O
-│   └── main.py                  ← CLI entry-point that wires everything together
+├── .github/                       - GitHub issue and pull request templates
+│   ├── ISSUE_TEMPLATE/
+│   │   ├── bug_report.yml         - Structured bug report form
+│   │   ├── feature_request.yml    - Feature suggestion form
+│   │   └── config.yml             - Template chooser configuration
+│   └── PULL_REQUEST_TEMPLATE.md   - PR checklist for contributors
+│
+├── src/                           - All source code
+│   ├── data.py                    - Dataset generation and DataLoader creation
+│   ├── model.py                   - MLP architecture and capacity factory
+│   ├── train.py                   - Training loop with checkpointing
+│   ├── evaluate.py                - Post-training metrics and classification report
+│   ├── visualize.py               - All plotting and animation functions
+│   ├── utils.py                   - Seeding, device detection, checkpoint I/O
+│   └── main.py                    - CLI entry-point that wires everything together
 │
 ├── notebooks/
-│   └── epoch_analysis.ipynb     ← Interactive Jupyter analysis
+│   └── epoch_analysis.ipynb       - Interactive Jupyter analysis and comparison
 │
-├── checkpoints/                 ← Auto-created: .pt weight files per epoch
+├── checkpoints/                   - Auto-created at runtime: .pt weight snapshots
 │   ├── epoch_0001.pt
 │   ├── epoch_0050.pt
 │   └── ...
 │
-└── outputs/                     ← Auto-created: all generated plots
+└── outputs/                       - Auto-created at runtime: all generated plots
     ├── loss_curve.png
     ├── accuracy_curve.png
     ├── boundary_epoch_XXXX.png
     ├── epoch_snapshots.png
-    ├── training_animation.gif   ← Only with --animate
-    └── history.json
+    ├── training_animation.gif      - Only generated with --animate flag
+    └── history.json               - Raw per-epoch metrics for notebook use
 ```
 
 ---
@@ -243,79 +313,99 @@ epochs-demo/
 ## Module Reference
 
 <details>
-<summary><strong>📦 src/data.py — Dataset Generation</strong></summary>
+<summary><strong>📦 src/data.py — Dataset Generation and DataLoaders</strong></summary>
 
-`data.py` is responsible for generating the synthetic training data and packaging it into PyTorch `DataLoader` objects that the training loop can consume. It uses scikit-learn's `make_moons` function to produce a two-class, two-dimensional dataset where the optimal decision boundary is a smooth non-linear curve. This makes it ideal for visualising what the model has learned at any given epoch.
+`data.py` is responsible for generating the synthetic training data and packaging it into PyTorch `DataLoader` objects that the training loop can iterate over. It uses scikit-learn's `make_moons` function to produce a two-class, two-dimensional dataset where the optimal decision boundary is a smooth non-linear curve. This choice is intentional: a linear boundary (like the one produced by `make_blobs` with well-separated clusters) would not demonstrate the need for a non-linear model, and the epoch effects would be far less visually striking.
 
-The module exposes two public functions:
+The module exposes two public functions. `generate_dataset` returns raw NumPy arrays and is used when you need the full dataset for visualisation. `get_dataloaders` wraps those arrays into a `TensorDataset` and splits them into training and validation sets using a seeded `random_split`, then returns two `DataLoader` objects plus the full raw arrays for downstream boundary plotting.
 
-| Function | Signature | Returns | Purpose |
-|---|---|---|---|
-| <sub>generate_dataset</sub> | <sub>n_samples, noise, random_state</sub> | <sub>(X: ndarray, y: ndarray)</sub> | <sub>Raw numpy arrays for the full dataset</sub> |
-| <sub>get_dataloaders</sub> | <sub>n_samples, noise, batch_size, val_split, random_state</sub> | <sub>(train_loader, val_loader, X_all, y_all)</sub> | <sub>Ready-to-use DataLoaders plus raw arrays for visualisation</sub> |
-
-The `val_split` parameter (default 0.20) controls what fraction of the data is held out for validation. The split is performed using PyTorch's `random_split` with a seeded generator, ensuring that the train/val partition is identical across every run as long as `random_state` is unchanged.
-
-</details>
-
-<details>
-<summary><strong>🧱 src/model.py — MLP Architecture</strong></summary>
-
-`model.py` defines the neural network architecture used throughout the project. The `MLP` class is a fully-connected feed-forward network where each hidden layer is followed by Batch Normalisation, a ReLU activation, and optional Dropout. Batch Normalisation stabilises training by normalising layer inputs, which allows higher learning rates and faster convergence. Dropout is a regularisation technique that randomly zeroes a fraction of activations during training, reducing the risk of overfitting.
-
-The `build_model` factory function accepts a `capacity` string and returns a pre-configured `MLP`. This abstraction means `main.py` and the notebook never need to know the exact hidden sizes — they just request "medium" or "overfit" and get the right architecture.
-
-| Preset | Hidden Layers | Dropout | Approx Params | Best Demonstrates |
+| # | Function | Key Parameters | Returns | Purpose |
 |---|---|---|---|---|
-| <sub>tiny</sub> | <sub>[8]</sub> | <sub>0.0</sub> | <sub>~150</sub> | <sub>Structural underfitting regardless of epochs</sub> |
-| <sub>small</sub> | <sub>[32, 16]</sub> | <sub>0.0</sub> | <sub>~700</sub> | <sub>Mild underfitting with few epochs</sub> |
-| <sub>medium</sub> | <sub>[64, 64]</sub> | <sub>0.1</sub> | <sub>~4,700</sub> | <sub>Balanced - converges cleanly, default preset</sub> |
-| <sub>large</sub> | <sub>[128, 128, 64]</sub> | <sub>0.2</sub> | <sub>~26,000</sub> | <sub>Regularised high capacity, slow to overfit</sub> |
-| <sub>overfit</sub> | <sub>[256, 256, 256, 128]</sub> | <sub>0.0</sub> | <sub>~200,000</sub> | <sub>Deliberately oversized, overfits rapidly</sub> |
+| 1 | `generate_dataset` | `n_samples`, `noise`, `random_state` | `(X: ndarray, y: ndarray)` | Raw NumPy arrays for the full dataset before splitting |
+| 2 | `get_dataloaders` | `n_samples`, `noise`, `batch_size`, `val_split`, `random_state` | `(train_loader, val_loader, X_all, y_all)` | Ready-to-use DataLoaders plus raw arrays for visualisation |
+
+The `val_split` parameter (default `0.20`) controls what fraction of the data is held out for validation. With 1,000 samples and `val_split=0.20`, the training set has 800 samples and the validation set has 200 samples. The split is performed with a seeded generator, ensuring the train/val partition is identical across every run as long as `random_state` is unchanged — which is essential for fair comparison between experiments.
 
 </details>
 
 <details>
-<summary><strong>🔁 src/train.py — Training Loop</strong></summary>
+<summary><strong>🧱 src/model.py — MLP Architecture and Capacity Factory</strong></summary>
 
-`train.py` contains the core training logic. The `train` function executes `num_epochs` complete passes over the training data and returns a `history` dictionary containing four lists — `train_loss`, `val_loss`, `train_acc`, `val_acc` — each of length `num_epochs`. These lists are the primary data artifact of the project and power all downstream visualisations.
+`model.py` defines the neural network architecture used throughout the project. The `MLP` class is a fully-connected feed-forward network built from stacked `nn.Linear` layers. Each hidden layer is followed by `nn.BatchNorm1d` (batch normalisation), `nn.ReLU` (the activation function), and optionally `nn.Dropout`. The final linear layer maps to 2 output logits — one per class.
 
-The internal `_run_epoch` helper is shared between training and validation passes. When `training=True`, it runs `optimizer.zero_grad()`, `loss.backward()`, and `optimizer.step()`. When `training=False`, it runs inside `torch.no_grad()` and skips all weight-update steps, which both saves memory and prevents gradient contamination of the validation pass.
+Batch Normalisation normalises each layer's inputs to have approximately zero mean and unit variance across the mini-batch, which stabilises training by reducing the problem of internal covariate shift. Covariate shift occurs when the distribution of a layer's inputs keeps changing as earlier layers update their weights, forcing later layers to constantly re-adapt. By normalising layer inputs, BN allows higher learning rates and faster convergence, and also acts as a mild regulariser by adding noise proportional to the batch statistics.
 
-The `save_epochs` parameter controls which epochs trigger a checkpoint save. By default, checkpoints are saved at epoch 1, 25%, 50%, 75%, and 100% of total training, giving five snapshots that span the full underfitting-to-overfitting spectrum.
+Dropout is a regularisation technique that randomly sets a fraction of neuron activations to zero during each training forward pass. This forces different subsets of neurons to independently learn to represent the same features, creating redundancy that makes the network more robust. During inference, Dropout is disabled and activations are scaled by `(1 - dropout_rate)` to maintain the same expected output magnitude.
+
+The `build_model` factory function accepts a `capacity` string and returns a correctly configured `MLP` instance. This abstraction shields `main.py` and the notebook from knowing the exact hidden-layer sizes — they simply request `"medium"` or `"overfit"` and get the right architecture.
+
+| # | Preset | Hidden Layers | Dropout | Approx Params | Best Demonstrates |
+|---|---|---|---|---|---|
+| 1 | `tiny` | `[8]` | 0.0 | ~150 | Structural underfitting regardless of epoch count |
+| 2 | `small` | `[32, 16]` | 0.0 | ~700 | Mild underfitting with too few epochs |
+| 3 | `medium` | `[64, 64]` | 0.1 | ~4,700 | Balanced — converges cleanly, the recommended default |
+| 4 | `large` | `[128, 128, 64]` | 0.2 | ~26,000 | Regularised high capacity, slow to overfit |
+| 5 | `overfit` | `[256, 256, 256, 128]` | 0.0 | ~200,000 | Deliberately oversized — overfits rapidly |
+
+</details>
+
+<details>
+<summary><strong>🔁 src/train.py — Training Loop and Checkpointing</strong></summary>
+
+`train.py` contains the core training logic. The `train` function accepts a model, two DataLoaders, an optimiser, a scheduler, and training configuration, then runs `num_epochs` complete passes over the training data. It returns a `history` dictionary containing four lists — `train_loss`, `val_loss`, `train_acc`, `val_acc` — each of length `num_epochs`. These lists are the primary data artifact of the project and power all downstream visualisations and the Jupyter notebook analysis.
+
+The internal `_run_epoch` helper is shared between training and validation passes. When `training=True`, it calls `optimizer.zero_grad()`, computes the forward pass, calls `loss.backward()`, and then calls `optimizer.step()`. When `training=False`, it wraps everything in `torch.no_grad()` and skips all weight-update steps, which saves memory, prevents gradient tape contamination, and ensures the model is evaluated in inference mode (which disables Dropout and uses running statistics in BatchNorm rather than batch statistics).
+
+The `save_epochs` parameter controls which epoch numbers trigger a checkpoint save. By default, checkpoints are saved at epochs 1, 25%, 50%, 75%, and 100% of the total run, producing five evenly-spaced snapshots that span the complete underfitting-to-overfitting spectrum. Each checkpoint is saved as `epoch_XXXX.pt` where `XXXX` is the zero-padded epoch number.
 
 </details>
 
 <details>
 <summary><strong>📊 src/visualize.py — Plotting and Animation</strong></summary>
 
-`visualize.py` exposes five public plotting functions, each writing a PNG or GIF to the `outputs/` directory. All functions accept a `show=False` flag; set it to `True` for interactive display or leave it `False` for headless/scripted execution.
+`visualize.py` exposes five public plotting functions, each writing one output file to the `outputs/` directory. All functions accept a `show=False` keyword argument: pass `show=True` to display plots interactively in a GUI window, or leave it `False` (the default) for headless/scripted execution where plots should only be written to disk. All functions also accept an `output_dir` parameter to redirect output to a different folder, which the experiments guide uses to keep results from different runs separate.
 
-| Function | Output File | Description |
-|---|---|---|
-| <sub>plot_loss_curve</sub> | <sub>loss_curve.png</sub> | <sub>Train and val loss over all epochs with colour-coded phase regions</sub> |
-| <sub>plot_accuracy_curve</sub> | <sub>accuracy_curve.png</sub> | <sub>Train and val accuracy over all epochs as percentages</sub> |
-| <sub>plot_decision_boundary</sub> | <sub>boundary_epoch_XXXX.png</sub> | <sub>Contourf boundary for a single model at a single epoch</sub> |
-| <sub>plot_epoch_snapshots</sub> | <sub>epoch_snapshots.png</sub> | <sub>Multi-panel grid comparing boundaries at all saved checkpoints</sub> |
-| <sub>animate_training</sub> | <sub>training_animation.gif</sub> | <sub>Animated GIF cycling through all checkpoint boundaries</sub> |
+| # | Function | Output File | What It Shows |
+|---|---|---|---|
+| 1 | `plot_loss_curve` | `loss_curve.png` | Train and val loss over all epochs with colour-coded phase regions |
+| 2 | `plot_accuracy_curve` | `accuracy_curve.png` | Train and val accuracy over all epochs as percentages |
+| 3 | `plot_decision_boundary` | `boundary_epoch_XXXX.png` | Full-resolution contourf boundary for a single model at a single epoch |
+| 4 | `plot_epoch_snapshots` | `epoch_snapshots.png` | Multi-panel grid comparing boundaries at all saved checkpoint epochs |
+| 5 | `animate_training` | `training_animation.gif` | Animated GIF cycling through all checkpoint boundaries at 4 fps |
 
-Decision boundaries are computed by building a 300x300 meshgrid over the feature space, running all 90,000 grid points through the model in a single `torch.no_grad()` forward pass, and mapping the class-1 softmax probability to a colour scale.
+Decision boundaries are produced by building a 300x300 meshgrid over the feature space, passing all 90,000 grid points through the model in a single batched `torch.no_grad()` forward call, mapping the resulting class-1 softmax probability to a colour scale (blue = low probability of class 1, red = high), and drawing the 0.5-probability contour line as the decision boundary.
 
 </details>
 
 <details>
 <summary><strong>🛠️ src/utils.py — Shared Helpers</strong></summary>
 
-`utils.py` provides five utility functions that are used by multiple modules. Centralising these prevents code duplication and ensures consistent behaviour across the codebase.
+`utils.py` provides six utility functions that are used by multiple modules. Centralising these prevents code duplication and ensures consistent behaviour across the codebase. No module should re-implement seeding, device detection, or checkpoint I/O — it should always call `utils.py` instead.
 
-| Function | Purpose |
-|---|---|
-| <sub>seed_everything(seed)</sub> | <sub>Sets Python, NumPy, and PyTorch RNG seeds simultaneously for full reproducibility</sub> |
-| <sub>get_device()</sub> | <sub>Returns the best available torch.device: CUDA > MPS (Apple Silicon) > CPU</sub> |
-| <sub>save_checkpoint(model, epoch, metrics, dir)</sub> | <sub>Saves model state_dict plus epoch number and metric snapshot to a .pt file</sub> |
-| <sub>load_checkpoint(model, path, device)</sub> | <sub>Loads weights from a .pt file into an existing model instance</sub> |
-| <sub>save_history(history, dir)</sub> | <sub>Serialises the training history dict to history.json for notebook analysis</sub> |
-| <sub>load_history(dir)</sub> | <sub>Deserialises history.json back into a Python dict for plotting</sub> |
+| # | Function | Signature | Purpose |
+|---|---|---|---|
+| 1 | `seed_everything` | `seed: int` | Sets Python, NumPy, and PyTorch RNG seeds simultaneously for full reproducibility |
+| 2 | `get_device` | `()` | Returns the best available `torch.device`: CUDA > MPS (Apple Silicon) > CPU |
+| 3 | `save_checkpoint` | `model, epoch, metrics, path` | Saves model `state_dict` plus metadata to a `.pt` file |
+| 4 | `load_checkpoint` | `model, path, device` | Loads weights from a `.pt` file into an existing model instance |
+| 5 | `save_history` | `history, path` | Serialises the training history dict to `history.json` |
+| 6 | `load_history` | `path` | Deserialises `history.json` back into a Python dict for plotting |
+
+</details>
+
+<details>
+<summary><strong>📈 src/evaluate.py — Post-Training Metrics</strong></summary>
+
+`evaluate.py` runs after training completes and produces a detailed classification report using scikit-learn's `classification_report`. It loads the final checkpoint, runs the model in inference mode over the full dataset, and prints precision, recall, F1-score, and support for each class. This is useful for confirming that the model achieves roughly equal performance on both classes — an important check because accuracy alone can be misleading if one class is more common than the other.
+
+The module also computes and prints the confusion matrix, which shows the exact counts of true positives, true negatives, false positives, and false negatives. For a well-trained medium model on default settings, you should see a nearly diagonal confusion matrix, indicating that both classes are classified correctly with roughly equal reliability.
+
+</details>
+
+<details>
+<summary><strong>⌨️ src/main.py — CLI Entry Point</strong></summary>
+
+`main.py` is the single entry point for all training runs. It uses Python's `argparse` module to define the command-line interface, parses the arguments, calls `utils.seed_everything`, calls `utils.get_device`, orchestrates calls to `data.get_dataloaders`, `model.build_model`, `train.train`, `evaluate.evaluate`, and `visualize.*` in sequence, and then exits. Every other module is a library — `main.py` is the only place where the full pipeline is assembled.
 
 </details>
 
@@ -325,277 +415,381 @@ Decision boundaries are computed by building a 300x300 meshgrid over the feature
 
 ### Prerequisites
 
-- Python 3.10 or later
-- A terminal (bash, zsh, PowerShell, or Command Prompt)
-- ~2 GB disk space for PyTorch installation
+This project requires Python 3.10 or later, a terminal (bash, zsh, PowerShell, or Command Prompt), and approximately 2 GB of disk space for the PyTorch installation. No GPU is required — the two-moons dataset and medium MLP are specifically designed to run fast on CPU, typically completing 200 epochs in under 30 seconds on any modern laptop.
 
 ### Installation
 
 ```bash
-# Clone or navigate to the project
+# Navigate to the project directory
 cd /path/to/epochs-demo
 
-# Create an isolated virtual environment
+# Create an isolated virtual environment (keeps this project's dependencies separate)
 python -m venv .venv
 
-# Activate it
+# Activate the virtual environment
 source .venv/bin/activate          # Linux / macOS
 # .venv\Scripts\activate           # Windows PowerShell
 
-# Install all dependencies
+# Install all pinned dependencies from requirements.txt
 pip install -r requirements.txt
 ```
+
+> [!NOTE]
+> Always activate the virtual environment before running any Python command in this project. You can tell it is active because your terminal prompt will show `(.venv)` at the beginning. If you see `ModuleNotFoundError: No module named 'torch'`, it means Python is running from the system installation rather than the virtual environment — re-run `source .venv/bin/activate`.
 
 ### Run Training
 
 ```bash
-# Standard run: 200 epochs, medium MLP, default settings
+# Standard run: 200 epochs, medium MLP, default settings — the recommended starting point
 python src/main.py
 
-# Generate boundary animation (requires Pillow, included in requirements)
+# Generate boundary animation (writes training_animation.gif to outputs/)
 python src/main.py --animate
 
-# Demonstrate clear overfitting: big model, many epochs, low noise
+# Demonstrate overfitting: large model, many epochs, low noise
 python src/main.py --capacity overfit --epochs 500 --noise 0.05
 
-# Demonstrate structural underfitting: model too small to learn
+# Demonstrate structural underfitting: model is too small to learn the boundary
 python src/main.py --capacity tiny --epochs 200
 
-# Demonstrate epoch-count underfitting: capable model, too few epochs
+# Demonstrate epoch-count underfitting: capable model, but not enough training time
 python src/main.py --capacity medium --epochs 5
 
-# Interactive display of plots as they are generated
+# Display each plot interactively as it is generated
 python src/main.py --show-plots
 ```
 
 ### Run the Notebook
 
 ```bash
-# Start Jupyter in the project root
+# Start Jupyter in the project root (after running training at least once)
 jupyter notebook notebooks/epoch_analysis.ipynb
 ```
 
 > [!TIP]
-> Run `python src/main.py` at least once before opening the notebook. The notebook loads `outputs/history.json` and `checkpoints/*.pt` that are produced by the training script. Without them, several cells will raise `FileNotFoundError`.
+> Run `python src/main.py` at least once before opening the notebook. The notebook loads `outputs/history.json` and checkpoint files from `checkpoints/*.pt` that are produced by the training script. Without them, several cells will raise `FileNotFoundError`. If you want to analyse a specific experiment, update the `HISTORY_PATH` and `CKPT_DIR` variables at the top of the notebook to point to the correct output directories.
 
 ---
 
 ## CLI Options
 
-The `main.py` entry-point accepts the following command-line arguments. All arguments are optional and have sensible defaults that produce a complete, educational demonstration out of the box.
+The `main.py` entry-point accepts the following command-line arguments. All arguments are optional and have defaults that produce a complete, educational demonstration out of the box. No flags are required for a first run.
 
-| Flag | Type | Default | Valid Range | Description |
-|---|---|---|---|---|
-| <sub>--epochs</sub> | <sub>int</sub> | <sub>200</sub> | <sub>1 - 10000</sub> | <sub>Total number of training epochs to run</sub> |
-| <sub>--batch-size</sub> | <sub>int</sub> | <sub>64</sub> | <sub>1 - n_samples</sub> | <sub>Mini-batch size fed to the model per gradient step</sub> |
-| <sub>--lr</sub> | <sub>float</sub> | <sub>0.01</sub> | <sub>1e-5 - 1.0</sub> | <sub>Initial learning rate for the Adam optimiser</sub> |
-| <sub>--noise</sub> | <sub>float</sub> | <sub>0.20</sub> | <sub>0.0 - 1.0</sub> | <sub>Gaussian noise standard deviation on dataset labels</sub> |
-| <sub>--n-samples</sub> | <sub>int</sub> | <sub>1000</sub> | <sub>100 - 100000</sub> | <sub>Total number of data points to generate</sub> |
-| <sub>--capacity</sub> | <sub>str</sub> | <sub>medium</sub> | <sub>see presets</sub> | <sub>Model size preset: tiny / small / medium / large / overfit</sub> |
-| <sub>--seed</sub> | <sub>int</sub> | <sub>42</sub> | <sub>any int</sub> | <sub>Master RNG seed for full reproducibility</sub> |
-| <sub>--output-dir</sub> | <sub>str</sub> | <sub>outputs</sub> | <sub>any path</sub> | <sub>Directory where PNG and JSON artifacts are written</sub> |
-| <sub>--ckpt-dir</sub> | <sub>str</sub> | <sub>checkpoints</sub> | <sub>any path</sub> | <sub>Directory where .pt checkpoint files are saved</sub> |
-| <sub>--animate</sub> | <sub>flag</sub> | <sub>off</sub> | <sub>present / absent</sub> | <sub>If present, generate a GIF animation of boundary evolution</sub> |
-| <sub>--show-plots</sub> | <sub>flag</sub> | <sub>off</sub> | <sub>present / absent</sub> | <sub>If present, open each plot in an interactive window</sub> |
+| # | Flag | Type | Default | Valid Range | Description |
+|---|---|---|---|---|---|
+| 1 | `--epochs` | int | 200 | 1 - 10,000 | Total number of training epochs to run |
+| 2 | `--batch-size` | int | 64 | 1 - n_samples | Mini-batch size fed to the model per gradient step |
+| 3 | `--lr` | float | 0.01 | 1e-5 - 1.0 | Initial learning rate for the Adam optimiser |
+| 4 | `--noise` | float | 0.20 | 0.0 - 1.0 | Gaussian noise standard deviation added to data coordinates |
+| 5 | `--n-samples` | int | 1,000 | 100 - 100,000 | Total number of data points to generate |
+| 6 | `--capacity` | str | medium | tiny/small/medium/large/overfit | Model size preset controlling hidden layer widths and dropout |
+| 7 | `--seed` | int | 42 | any int | Master RNG seed for full reproducibility across runs |
+| 8 | `--output-dir` | str | outputs | any valid path | Directory where PNG and JSON artifacts are written |
+| 9 | `--ckpt-dir` | str | checkpoints | any valid path | Directory where `.pt` checkpoint files are saved |
+| 10 | `--animate` | flag | off | present / absent | If present, generate a GIF animation of boundary evolution |
+| 11 | `--show-plots` | flag | off | present / absent | If present, open each plot in an interactive GUI window |
+
+> [!TIP]
+> Use `--output-dir` and `--ckpt-dir` to give each experiment a unique folder so runs do not overwrite each other. For example: `python src/main.py --capacity overfit --output-dir outputs_overfit --ckpt-dir ckpts_overfit`. This makes it easy to compare experiments side by side in the Jupyter notebook by pointing `HISTORY_PATH` at each folder.
 
 ---
 
 ## Generated Outputs
 
-After a successful run, the `outputs/` directory contains the following files. Each file is self-contained and can be viewed independently.
+After a successful run, the `outputs/` directory contains the following files. Each file is self-contained and can be opened and examined independently without re-running the training script.
 
-| File | Size (approx) | Format | Description |
-|---|---|---|---|
-| <sub>loss_curve.png</sub> | <sub>60-80 KB</sub> | <sub>PNG</sub> | <sub>Train and val loss curves with annotated underfitting / learning / convergence phase regions</sub> |
-| <sub>accuracy_curve.png</sub> | <sub>40-60 KB</sub> | <sub>PNG</sub> | <sub>Train and val accuracy curves in percentage form over all epochs</sub> |
-| <sub>boundary_epoch_XXXX.png</sub> | <sub>150-200 KB</sub> | <sub>PNG</sub> | <sub>Full-resolution decision boundary contour at the final training epoch</sub> |
-| <sub>epoch_snapshots.png</sub> | <sub>400-700 KB</sub> | <sub>PNG</sub> | <sub>Multi-panel grid (up to 3 per row) of decision boundaries at each checkpoint</sub> |
-| <sub>training_animation.gif</sub> | <sub>1-5 MB</sub> | <sub>GIF</sub> | <sub>Animated decision boundary evolution across all checkpoints (--animate only)</sub> |
-| <sub>history.json</sub> | <sub>3-10 KB</sub> | <sub>JSON</sub> | <sub>Raw per-epoch train_loss, val_loss, train_acc, val_acc arrays for custom analysis</sub> |
+| # | File | Approx Size | Format | What It Contains |
+|---|---|---|---|---|
+| 1 | `loss_curve.png` | 60-80 KB | PNG | Train and val loss curves with colour-shaded phase regions (underfitting / learning / convergence / overfitting) annotated |
+| 2 | `accuracy_curve.png` | 40-60 KB | PNG | Train and val accuracy curves in percentage form; the gap between lines is the overfitting signal |
+| 3 | `boundary_epoch_XXXX.png` | 150-200 KB | PNG | Full-resolution probability surface with the 0.5-contour decision line at the final checkpoint epoch |
+| 4 | `epoch_snapshots.png` | 400-700 KB | PNG | Multi-panel grid (up to 3 panels per row) showing the decision boundary at each saved checkpoint epoch |
+| 5 | `training_animation.gif` | 1-5 MB | GIF | Animated boundary evolution across all checkpoints at 4 fps; only generated with `--animate` |
+| 6 | `history.json` | 3-10 KB | JSON | Raw per-epoch arrays: `train_loss`, `val_loss`, `train_acc`, `val_acc`; used by the Jupyter notebook |
 
 > [!NOTE]
-> All output files are overwritten on each run. If you want to preserve results from different experiments, copy the `outputs/` and `checkpoints/` directories to a separate folder before re-running with different settings.
+> All output files are **overwritten** on each run with the same `--output-dir`. If you want to preserve results from different experiments, either use a unique `--output-dir` per run or copy the `outputs/` directory to a backup folder before re-running. The `checkpoints/` directory is similarly overwritten unless you use `--ckpt-dir` to redirect it.
 
 ---
 
 ## How to Interpret the Visualizations
 
-### Loss Curve (`loss_curve.png`)
+### Loss Curve
 
-The loss curve is the single most important plot for understanding training health. The x-axis is epoch number; the y-axis is cross-entropy loss, where lower is better. Two lines are drawn: training loss (solid blue) and validation loss (dashed red). The plot is annotated with three shaded regions corresponding to the underfitting, learning, and convergence phases.
+The loss curve is the single most important plot for understanding training health. The x-axis is the epoch number; the y-axis is cross-entropy loss, where **lower is better**. Two lines are drawn: training loss (solid blue) and validation loss (dashed red). A well-designed training run shows both lines falling together through the first half of training, the validation line levelling off or very slightly rising in the second half while the training line continues to fall slightly, and the gap between them remaining small throughout.
 
-- When **both lines are falling together**, the model is genuinely learning generalisable features — this is healthy.
-- When **training loss falls but validation loss plateaus**, convergence has been reached. This is the ideal stopping point.
-- When **training loss continues falling while validation loss rises**, the model has crossed into overfitting — it is memorising training examples rather than learning the underlying pattern.
-- When **both lines are flat and high**, the model is structurally underfitting — either the model is too small or the learning rate is too low.
+When **both lines are falling in parallel**, the model is learning genuinely generalisable features — this is the healthy learning phase. When **training loss falls but validation loss plateaus**, the model has converged and further training delivers diminishing returns. When **training loss falls while validation loss rises**, overfitting has begun and the model is memorising training noise. When **both lines are flat and high**, the model is structurally underfitting — it is either too small to represent the boundary, or the learning rate is too low for any learning to occur.
 
-### Accuracy Curve (`accuracy_curve.png`)
+> [!TIP]
+> Print the loss curve and annotate the epoch where validation loss first stops decreasing. That is your optimal checkpoint — the model saved at that epoch has the best generalisation performance. In production, this is why **early stopping** is used: training automatically halts when validation loss has not improved for a specified number of epochs (the patience parameter).
 
-The accuracy curve is complementary to the loss curve and is often easier to interpret intuitively. The y-axis shows accuracy as a percentage; higher is better. The gap between the training accuracy line (green) and the validation accuracy line (orange) is a direct measure of the degree of overfitting. A small gap means the model generalises well. A growing gap means the model is increasingly specialised to the training set.
+### Accuracy Curve
+
+The accuracy curve is complementary to the loss curve and is often easier to interpret intuitively because accuracy has a natural upper bound of 100%. The y-axis shows accuracy as a percentage; higher is better. The gap between the training accuracy line (green) and the validation accuracy line (orange) is a direct, visual measure of overfitting severity. A gap of 1-3% is normal and expected. A gap of 10-15% or more indicates the model has specialised too strongly to the training set.
 
 > [!IMPORTANT]
-> Never use training accuracy alone to evaluate your model. A model that achieves 100% training accuracy but 60% validation accuracy is useless in production. Always report and monitor validation metrics.
+> Never evaluate a model using training accuracy alone. A model that achieves 100% training accuracy but only 60% validation accuracy has learned nothing useful — it has simply memorised the training set. Always report validation accuracy, and ideally also evaluate on a third hold-out test set that was never seen during training or hyperparameter tuning.
 
-### Decision Boundary Snapshots (`epoch_snapshots.png`)
+### Decision Boundary Snapshots
 
-The snapshot grid shows how the model's learned decision boundary evolves from random initialisation to a trained state. Each panel displays the same dataset with the model's current P(class=1) probability surface as a colour gradient (red = high probability of class 1, blue = low) and the 0.5 decision contour as a black line.
+The snapshot grid shows how the model's learned boundary evolves from random initialisation to a fully trained state. Each panel displays the same scatter plot of data points, coloured by true class label, overlaid with a continuous probability surface (red = high P(class=1), blue = low P(class=1)) and the 0.5 decision contour drawn as a thick black line. Reading the panels left-to-right, top-to-bottom traces the complete learning story:
 
-- **Epoch 1** — The boundary is essentially random: a roughly straight or slightly curved line that does not follow the moon shapes at all.
-- **Early mid epochs** — The boundary begins to curve and roughly separate the two classes, but with large misclassified regions.
-- **Later mid epochs** — The boundary tightens around the true moon shapes, with fewer misclassifications.
-- **Final epoch (medium model)** — A smooth, clean curve that closely follows the true boundary.
-- **Final epoch (overfit model with noise=0.05)** — A jagged, over-complex boundary that threads through individual training points instead of capturing the smooth underlying pattern.
+At **epoch 1** the boundary is essentially random — a roughly straight or gently curved line that does not follow the moon shapes at all, because the weights are still close to their random initialisation. In the **early-middle epochs** the boundary begins curving and roughly separating the two crescents, but with large regions of misclassification still visible. In the **later-middle epochs** the boundary tightens around the true moon shapes, with fewer and fewer points on the wrong side of the line. At the **final epoch with the medium model** the boundary is a smooth, clean curve that closely approximates the true boundary. At the **final epoch with the overfit model at low noise**, the boundary becomes jagged and over-complex — it threads through individual training points and no longer looks like a smooth curve at all.
 
-### Animation (`training_animation.gif`)
+### Animation
 
-The animation loops through all saved checkpoint boundaries sequentially at 4 frames per second, making the progressive learning process visible as a continuous transition. Watch for the moment when the boundary stops visibly improving — that is approximately your convergence point.
+The animation loops through all saved checkpoint panels sequentially at 4 frames per second, making the progressive learning process visible as a continuous transition rather than a static grid. Watch for the frame where the boundary stops visibly changing — that is approximately your convergence point. With the `overfit` preset, continue watching past convergence and observe the boundary becoming increasingly jagged as the model starts memorising noise.
 
 ---
 
 ## Dataset Details
 
-This project uses **scikit-learn's `make_moons`** synthetic dataset. Two interleaved crescent (moon) shapes are generated in a 2-D feature space. The two crescents overlap based on the `noise` parameter, which adds Gaussian noise to the point coordinates. Higher noise values produce datasets that are inherently harder to classify perfectly, which limits the maximum achievable accuracy and makes the overfitting regime easier to reach.
+This project uses **scikit-learn's `make_moons`** synthetic dataset. Two interleaved crescent (moon) shapes are generated in a 2-D feature space, with one class forming the upper crescent and the other the lower crescent. The degree of overlap between the classes is controlled by the `noise` parameter, which adds Gaussian noise to the (x, y) coordinates of each data point — larger noise spreads points further from their ideal moon positions, increasing class overlap and making perfect classification impossible.
 
-| Parameter | Default | Effect When Increased |
-|---|---|---|
-| <sub>n_samples</sub> | <sub>1000</sub> | <sub>More data points; reduces overfitting risk; slower training</sub> |
-| <sub>noise</sub> | <sub>0.20</sub> | <sub>More class overlap; lower max accuracy; earlier overfitting appears</sub> |
-| <sub>val_split</sub> | <sub>0.20</sub> | <sub>Larger validation set; more reliable val metrics; smaller training set</sub> |
-| <sub>random_state</sub> | <sub>42</sub> | <sub>Different seed produces different point layout; same seed guarantees identical runs</sub> |
+The two-moons dataset was chosen for this project because it satisfies four requirements simultaneously: it **requires a non-linear decision boundary** (a linear model always underfits, making model capacity effects visible), it is **two-dimensional** (so boundaries can be plotted directly without dimensionality reduction), it is **generated instantly in memory** (no data files, no downloads, no external dependencies), and its **noise parameter is a single continuous knob** that controls task difficulty and makes it easy to design targeted experiments.
 
-The two-moons dataset was chosen for this project because:
+| # | Parameter | Default | Effect When Increased |
+|---|---|---|---|
+| 1 | `n_samples` | 1,000 | More data points; reduces overfitting risk; slower per-epoch training time |
+| 2 | `noise` | 0.20 | More class overlap; lower maximum achievable accuracy; overfitting appears sooner |
+| 3 | `val_split` | 0.20 | Larger validation set; more reliable val metrics; smaller training set |
+| 4 | `random_state` | 42 | Different integer produces a different point layout; same integer guarantees identical runs |
+| 5 | `batch_size` | 64 | Larger batch = smoother gradients, more stable training, more memory; smaller batch = noisier updates, sometimes better generalisation |
 
-1. It **requires a non-linear decision boundary** to classify correctly, which means a linear model (equivalent to a very tiny MLP) will always underfit regardless of epoch count — making the capacity effect distinguishable from the epoch effect.
-2. It is **two-dimensional**, so the decision boundary can be plotted directly on a 2-D scatter plot without dimensionality reduction.
-3. It is **generated instantly** — no download, no file I/O — so the project has zero external data dependencies.
-4. The **noise level is a single continuous knob** that controls task difficulty, making it easy to design experiments that isolate specific phenomena.
+> [!NOTE]
+> With `noise=0.0` (no noise), the data is perfectly separable and even a small model will achieve ~100% validation accuracy given enough epochs. With `noise=0.50`, the classes overlap so heavily that even a large model cannot exceed ~80% accuracy because many points are genuinely ambiguous — they could plausibly belong to either class. The default `noise=0.20` is chosen to sit in the interesting middle ground where a well-trained model achieves 94-97% accuracy and the boundary is clearly non-trivial but achievable.
 
 ---
 
 ## Model Capacity Presets
 
-Model **capacity** refers to the total number of learnable parameters in the network, which determines the maximum complexity of function the model can represent. A model with insufficient capacity cannot fit the training data no matter how many epochs you run — this is called structural underfitting. A model with excess capacity can fit arbitrary noise in the training data if trained long enough — this is overfitting.
+Model **capacity** refers to the total number of learnable parameters in the network, which determines the maximum complexity of function the model can represent. A model with insufficient capacity cannot fit the training data no matter how many epochs you run — this is called **structural underfitting** and is fundamentally different from **epoch-count underfitting** (where the model has enough capacity but has not been trained long enough). Understanding this distinction is crucial: if your model is structurally underfitting, more epochs will not help — you need a larger model.
 
-| Preset | Architecture | Total Params | Dropout | Intended Demonstration |
-|---|---|---|---|---|
-| <sub>tiny</sub> | <sub>Linear(2→8) → BN → ReLU → Linear(8→2)</sub> | <sub>~150</sub> | <sub>None</sub> | <sub>Model is too small to learn the boundary at any epoch count</sub> |
-| <sub>small</sub> | <sub>2→32→16→2</sub> | <sub>~700</sub> | <sub>None</sub> | <sub>Borderline capacity; needs many epochs; slight underfitting persists</sub> |
-| <sub>medium</sub> | <sub>2→64→64→2</sub> | <sub>~4,700</sub> | <sub>10%</sub> | <sub>Well-matched to task; clean convergence by ~150 epochs</sub> |
-| <sub>large</sub> | <sub>2→128→128→64→2</sub> | <sub>~26,000</sub> | <sub>20%</sub> | <sub>Excess capacity but regularised; overfits eventually with noise=0.05</sub> |
-| <sub>overfit</sub> | <sub>2→256→256→256→128→2</sub> | <sub>~200,000</sub> | <sub>None</sub> | <sub>Massively over-parameterised; overfits rapidly even with noise=0.20</sub> |
+A model with excess capacity, on the other hand, can memorise arbitrary noise given enough training time. This is called overfitting by over-parameterisation. The solution is not to reduce the model size (which would hurt performance on harder tasks) but to apply **regularisation** — dropout, weight decay, data augmentation, or early stopping — which constrains the model's tendency to memorise while preserving its ability to represent complex patterns.
+
+| # | Preset | Architecture | Total Params | Dropout | Intended Demonstration |
+|---|---|---|---|---|---|
+| 1 | `tiny` | `Linear(2→8) → BN → ReLU → Linear(8→2)` | ~150 | None | Model too small to learn the moon boundary at any epoch count |
+| 2 | `small` | `2→32→16→2` | ~700 | None | Borderline capacity; needs many epochs; mild underfitting persists |
+| 3 | `medium` | `2→64→64→2` | ~4,700 | 10% | Well-matched to task; clean convergence by ~150 epochs; the default |
+| 4 | `large` | `2→128→128→64→2` | ~26,000 | 20% | Excess capacity but strongly regularised; overfits only at very high epochs |
+| 5 | `overfit` | `2→256→256→256→128→2` | ~200,000 | None | Massively over-parameterised; overfits rapidly even with `noise=0.20` |
 
 > [!CAUTION]
-> The `overfit` preset deliberately removes Dropout to make overfitting happen faster and more visibly. Do not use this configuration as a template for real projects. In production, always include regularisation in large models.
+> The `overfit` preset deliberately removes all dropout regularisation to make overfitting happen as fast and as visibly as possible. This is a teaching tool, not a template. In production, large models should always include dropout, weight decay, or both. Removing regularisation from a large model trained on a small dataset is a reliable recipe for a model that performs well on paper (training metrics) but fails in deployment (real-world data).
+
+---
+
+## Checkpoint Format
+
+Each checkpoint file saved by `utils.save_checkpoint` is a PyTorch `.pt` file containing a Python dictionary with the following keys. You can load and inspect any checkpoint directly in Python without running the full training pipeline.
+
+| # | Key | Type | Description |
+|---|---|---|---|
+| 1 | `epoch` | int | The epoch number at which this checkpoint was saved (1-indexed) |
+| 2 | `model_state_dict` | OrderedDict | The full weight and bias tensors for every layer in the MLP |
+| 3 | `train_loss` | float | Mean cross-entropy loss on the training set at this epoch |
+| 4 | `val_loss` | float | Mean cross-entropy loss on the validation set at this epoch |
+| 5 | `train_acc` | float | Mean accuracy on the training set at this epoch (0.0 - 1.0) |
+| 6 | `val_acc` | float | Mean accuracy on the validation set at this epoch (0.0 - 1.0) |
+| 7 | `capacity` | str | The model capacity preset string used to create the model |
+
+```python
+import torch
+
+# Load and inspect a checkpoint
+ckpt = torch.load("checkpoints/epoch_0050.pt", map_location="cpu")
+print(f"Epoch: {ckpt['epoch']}")
+print(f"Val accuracy: {ckpt['val_acc']:.2%}")
+print(f"Layers: {list(ckpt['model_state_dict'].keys())[:4]}")
+```
+
+> [!TIP]
+> To resume training from a checkpoint, load the `model_state_dict` into a freshly constructed `MLP`, then also restore the optimiser state (if you saved it) and the scheduler state. In this demo project checkpoints only save model weights, not optimiser or scheduler state — which means resumed training will reset the learning rate. For production checkpointing patterns see the [PyTorch documentation on saving and loading models](https://pytorch.org/tutorials/beginner/saving_loading_models.html).
+
+---
+
+## Hyperparameter Effects
+
+Understanding how each hyperparameter affects training helps you design targeted experiments and diagnose problems. The table below summarises the first-order effects of changing each hyperparameter independently while holding all others at their default values.
+
+| # | Hyperparameter | Default | Increase Effect | Decrease Effect | Primary Tradeoff |
+|---|---|---|---|---|---|
+| 1 | `--epochs` | 200 | More training time; risk of overfitting at high values | Less training; risk of underfitting | Underfitting vs overfitting |
+| 2 | `--lr` | 0.01 | Faster early learning; risk of divergence or oscillation | Slower learning; more stable but may not converge in budget | Speed vs stability |
+| 3 | `--batch-size` | 64 | Smoother gradients; more stable; needs more memory | Noisier gradients; sometimes better generalisation; less memory | Stability vs generalisation |
+| 4 | `--noise` | 0.20 | Harder task; lower ceiling accuracy; overfitting appears earlier | Easier task; higher accuracy; boundary more dramatic | Task difficulty |
+| 5 | `--n-samples` | 1,000 | More data; reduces overfitting risk; slower per epoch | Less data; overfitting risk rises sharply | Overfitting risk vs speed |
+| 6 | Dropout rate | 0.1 (medium) | Stronger regularisation; higher training loss; better generalisation | Weaker regularisation; easier overfitting | Regularisation strength |
+| 7 | Weight decay | 1e-4 | Smaller weights; smoother boundaries; reduced overfitting | Larger weights; potentially higher model complexity | Regularisation strength |
+
+> [!NOTE]
+> Hyperparameter interactions are non-linear: doubling the learning rate and halving the batch size are **not** equivalent changes, even though both increase gradient noise. Similarly, increasing model capacity and decreasing regularisation simultaneously amplifies overfitting far more than either change would alone. Always change one hyperparameter at a time when running diagnostic experiments.
 
 ---
 
 ## Experiments Guide
 
-The following experiments are designed to isolate and demonstrate specific phenomena. Run each command, then compare the `outputs/` plots side by side.
+The following experiments are designed to isolate and demonstrate specific phenomena. Run each experiment with a unique `--output-dir` so the results do not overwrite each other, then compare the loss curves and decision boundary plots side by side.
 
-### Experiment 1 — Underfitting by Epoch Count
+### Experiment 1 — Epoch-Count Underfitting
+
+A capable model that has not been trained long enough. The weights are still close to their random initialisation and the decision boundary is barely curved.
 
 ```bash
-# A capable model with far too few epochs
-python src/main.py --capacity medium --epochs 5 --output-dir outputs_exp1 --ckpt-dir ckpts_exp1
+python src/main.py --capacity medium --epochs 5 \
+  --output-dir outputs_exp1 --ckpt-dir ckpts_exp1
 ```
 
-Expected result: Both loss curves are high and flat. The decision boundary is a crude, barely-curved line. Accuracy is around 70-75%.
+**Expected:** Both loss curves are high and flat. Decision boundary is a crude, nearly straight line. Validation accuracy is around 70-75%. Both training and validation metrics are poor, confirming that the model simply has not had enough time to learn — this is underfitting, not overfitting.
+
+---
 
 ### Experiment 2 — Healthy Convergence (Baseline)
 
-```bash
-# Default settings — the intended "correct" outcome
-python src/main.py --capacity medium --epochs 200 --output-dir outputs_exp2 --ckpt-dir ckpts_exp2
-```
-
-Expected result: Both loss curves fall together and level off. Validation accuracy reaches approximately 95-97%. Decision boundary is a smooth curve that closely follows the moon shapes.
-
-### Experiment 3 — Overfitting by Epoch Count
+The default settings produce a clean convergence story with no overfitting. This is the intended "correct" outcome and serves as a reference point for all other experiments.
 
 ```bash
-# Large model, many epochs, easy (low-noise) data
-python src/main.py --capacity overfit --epochs 500 --noise 0.05 --output-dir outputs_exp3 --ckpt-dir ckpts_exp3 --animate
+python src/main.py --capacity medium --epochs 200 \
+  --output-dir outputs_exp2 --ckpt-dir ckpts_exp2
 ```
 
-Expected result: Training loss falls to near zero. Validation loss first falls then rises. Decision boundary becomes jagged and over-complex at late epochs. The animation makes this transition dramatic.
+**Expected:** Both loss curves fall together and level off around epoch 100-150. Validation accuracy reaches approximately 95-97%. Decision boundary is a smooth curve following the moon shapes. The training-validation gap is small (under 3%).
+
+---
+
+### Experiment 3 — Overfitting by Epoch Count and Model Size
+
+A large model with no regularisation, trained on easy (low-noise) data for many epochs. The combination of high capacity, no dropout, and many epochs produces dramatic overfitting that is visible in every output file.
+
+```bash
+python src/main.py --capacity overfit --epochs 500 --noise 0.05 \
+  --output-dir outputs_exp3 --ckpt-dir ckpts_exp3 --animate
+```
+
+**Expected:** Training loss falls close to zero while validation loss bottoms out around epoch 50-100 and then steadily rises. Training accuracy exceeds 99% while validation accuracy plateaus and falls. Decision boundary becomes jagged and over-complex at later epochs. The animation makes the deterioration of the boundary visible as a continuous process.
+
+---
 
 ### Experiment 4 — Structural Underfitting
 
+A model that is too small to represent the decision boundary regardless of how many epochs it trains. Adding more epochs does not help — the model simply lacks the capacity to learn the curve.
+
 ```bash
-# Tiny model that cannot represent the boundary regardless of epochs
-python src/main.py --capacity tiny --epochs 300 --output-dir outputs_exp4 --ckpt-dir ckpts_exp4
+python src/main.py --capacity tiny --epochs 300 \
+  --output-dir outputs_exp4 --ckpt-dir ckpts_exp4
 ```
 
-Expected result: Both loss curves plateau early at a high value. The decision boundary never learns the moon shape, no matter how many epochs run.
+**Expected:** Both loss curves plateau early at a value well above the baseline. The decision boundary never learns the moon shape across all 300 epochs — it remains a roughly straight line throughout every checkpoint snapshot. Validation accuracy stays around 75-80% even at epoch 300, demonstrating that the ceiling is architectural rather than a matter of training time.
+
+---
+
+### Experiment 5 — Effect of Dataset Noise
+
+A medium model trained twice on the same architecture but with different noise levels. The higher noise run will have a lower accuracy ceiling and will overfit sooner, demonstrating how data quality affects the entire training dynamic.
+
+```bash
+# Low noise — easy task, near-perfect decision boundary
+python src/main.py --capacity medium --noise 0.05 \
+  --output-dir outputs_lownoise --ckpt-dir ckpts_lownoise
+
+# High noise — hard task, overlapping classes, lower ceiling
+python src/main.py --capacity medium --noise 0.40 \
+  --output-dir outputs_highnoise --ckpt-dir ckpts_highnoise
+```
+
+**Expected:** The low-noise run achieves ~99% validation accuracy with a sharp, well-defined boundary. The high-noise run peaks around 82-85% with a fuzzy, uncertain boundary in the overlap region between the two moons.
 
 ---
 
 ## Dependencies
 
-All dependencies are pinned in `requirements.txt`. Install them with `pip install -r requirements.txt` inside a virtual environment.
+All dependencies are pinned in `requirements.txt`. Install them with `pip install -r requirements.txt` inside an activated virtual environment. Pinning versions ensures that every run — on any machine, at any date — uses exactly the same library behaviour, which is critical for reproducible ML experiments.
 
-| Package | Minimum Version | Runtime Role | Why Pinned |
-|---|---|---|---|
-| <sub>torch</sub> | <sub>2.0.0</sub> | <sub>All model definition, training, inference</sub> | <sub>Major version introduces compile() and significant API changes</sub> |
-| <sub>torchvision</sub> | <sub>0.15.0</sub> | <sub>Companion to torch; ensures ABI compatibility</sub> | <sub>Must match torch major version</sub> |
-| <sub>numpy</sub> | <sub>1.24.0</sub> | <sub>Array bridge between sklearn and torch; meshgrid</sub> | <sub>1.24 fixes dtype inference regressions</sub> |
-| <sub>matplotlib</sub> | <sub>3.7.0</sub> | <sub>All plotting, contourf, PillowWriter for GIF</sub> | <sub>3.7 introduces improved layout engine used by tight_layout</sub> |
-| <sub>scikit-learn</sub> | <sub>1.3.0</sub> | <sub>make_moons dataset; classification_report</sub> | <sub>1.3 fixes random_state handling in make_moons</sub> |
-| <sub>tqdm</sub> | <sub>4.65.0</sub> | <sub>Training progress bar with live metric postfix</sub> | <sub>4.65 fixes Windows terminal width detection</sub> |
-| <sub>jupyter</sub> | <sub>1.0.0</sub> | <sub>Notebook server for epoch_analysis.ipynb</sub> | <sub>Meta-package pinned for compatibility</sub> |
-| <sub>ipykernel</sub> | <sub>6.0.0</sub> | <sub>Python kernel for Jupyter notebooks</sub> | <sub>Required by Jupyter Lab and classic notebook</sub> |
+| # | Package | Min Version | Runtime Role | Why Pinned to This Version |
+|---|---|---|---|---|
+| 1 | `torch` | 2.0.0 | All model definition, training, and inference | v2.0 introduces `torch.compile()` and significant API cleanup |
+| 2 | `torchvision` | 0.15.0 | Companion to torch; ensures ABI compatibility | Must match torch major version exactly |
+| 3 | `numpy` | 1.24.0 | Array bridge between sklearn and torch; meshgrid for boundaries | 1.24 fixes dtype inference regressions affecting `float64` default |
+| 4 | `matplotlib` | 3.7.0 | All plotting, contourf surfaces, PillowWriter for GIF output | 3.7 introduces improved layout engine used by `tight_layout` |
+| 5 | `scikit-learn` | 1.3.0 | `make_moons` dataset; `classification_report`; `confusion_matrix` | 1.3 fixes `random_state` propagation in synthetic generators |
+| 6 | `tqdm` | 4.65.0 | Per-epoch progress bar with live train/val metric postfix | 4.65 fixes Windows terminal width detection bug |
+| 7 | `jupyter` | 1.0.0 | Notebook server for `epoch_analysis.ipynb` | Meta-package pinned for compatibility with ipykernel |
+| 8 | `ipykernel` | 6.0.0 | Python kernel that Jupyter uses to execute notebook cells | Required by both Jupyter Lab and classic Notebook |
+| 9 | `Pillow` | 9.0.0 | Backend for `matplotlib.animation.PillowWriter` (GIF export) | Transitive dependency of torchvision; explicit pin for safety |
 
 ---
 
 ## Troubleshooting
 
 <details>
-<summary><strong>❌ ImportError: No module named 'torch'</strong></summary>
+<summary><strong>❌ ModuleNotFoundError: No module named 'torch'</strong></summary>
 
-You are running Python from the system environment rather than the virtual environment. Activate the venv first:
+You are running Python from the system installation rather than the project's virtual environment. Every `python` and `pip` command must be run with the virtual environment active.
 
 ```bash
-source .venv/bin/activate      # Linux / macOS
-.venv\Scripts\activate         # Windows
+# Activate the virtual environment first
+source .venv/bin/activate          # Linux / macOS
+.venv\Scripts\activate             # Windows PowerShell
+
+# Verify the correct Python is active
+which python                       # Should show .venv/bin/python
+
+# Then run the script
 python src/main.py
 ```
+
+If the virtual environment does not exist yet, create it: `python -m venv .venv` then install dependencies: `pip install -r requirements.txt`.
 
 </details>
 
 <details>
-<summary><strong>❌ FileNotFoundError: outputs/history.json</strong></summary>
+<summary><strong>❌ FileNotFoundError: outputs/history.json not found</strong></summary>
 
-The notebook or a visualise function is trying to load history that has not been generated yet. Run the training script first:
+The notebook or a visualisation function is trying to load training history that has not been generated yet. You must run the training script at least once before using the notebook.
 
 ```bash
+# Generate all output files
 python src/main.py
+
+# Then open the notebook
+jupyter notebook notebooks/epoch_analysis.ipynb
 ```
+
+If you used a custom `--output-dir`, update the `HISTORY_PATH` variable at the top of the notebook to point to the correct directory.
 
 </details>
 
 <details>
-<summary><strong>❌ GIF animation not generated / silent failure</strong></summary>
+<summary><strong>❌ GIF animation not generated (silent failure)</strong></summary>
 
-The `animate_training` function requires Pillow to write GIF files via `matplotlib.animation.PillowWriter`. Pillow is installed as a transitive dependency of `torchvision`, but if you are using a minimal environment it may be absent. Install it explicitly:
+The `animate_training` function uses `matplotlib.animation.PillowWriter` to write GIF files. PillowWriter requires the `Pillow` library, which is a transitive dependency of `torchvision` but may be absent in minimal environments. Install it explicitly and retry.
 
 ```bash
 pip install Pillow
+python src/main.py --animate
 ```
 
 </details>
 
 <details>
-<summary><strong>⚠️ Training is very slow on CPU</strong></summary>
+<summary><strong>⚠️ Training is unexpectedly slow on CPU</strong></summary>
 
-The two-moons dataset and medium MLP are designed to run fast on CPU — typically under 10 seconds for 200 epochs. If training is slow, check that you have not accidentally set `--n-samples` to a very large value, or switched to the `overfit` preset (which has ~200,000 parameters). On machines without a discrete GPU, the `medium` preset with 200 epochs is the recommended default.
+The medium MLP with 200 epochs is designed to complete in under 30 seconds on any modern CPU. If training is slow, check for these common causes: you may have accidentally set `--n-samples` to a very large value (e.g. 50,000 instead of 1,000); you may be using the `overfit` preset (which has ~200,000 parameters and takes significantly longer per epoch); or the virtual environment may have installed the CPU-only version of PyTorch when a CUDA version was expected (check `torch.cuda.is_available()`). For the fastest runs on a GPU machine, ensure the CUDA build of PyTorch is installed — see the [PyTorch installation guide](https://pytorch.org/get-started/locally/).
 
 </details>
 
 <details>
-<summary><strong>⚠️ Validation accuracy not reaching ~95%</strong></summary>
+<summary><strong>⚠️ Validation accuracy is not reaching ~95%</strong></summary>
 
-Several factors can lower peak validation accuracy: a high `--noise` value (try `--noise 0.10`), a very small dataset (`--n-samples 200`), or an insufficient learning rate. For the clearest demonstration of convergence, use the defaults: `python src/main.py` with no additional flags.
+The 95-97% target is specific to the default settings: `medium` capacity, `noise=0.20`, `n_samples=1000`, `epochs=200`, `lr=0.01`. Any deviation from defaults can lower the ceiling. Check the following: high `--noise` (try `--noise 0.10`); very small dataset (`--n-samples 200` makes overfitting much worse); wrong capacity (the `tiny` preset cannot physically reach 95%); or an accidentally low learning rate. For the most reliable demonstration of healthy convergence, run `python src/main.py` with no flags at all.
+
+</details>
+
+<details>
+<summary><strong>⚠️ Every run produces identical plots even with different seeds</strong></summary>
+
+PyTorch's `DataLoader` uses its own internal RNG that is seeded separately from the global RNG. The `seed_everything` function in `utils.py` sets the global seeds, but if you are using `num_workers > 0` in the DataLoader, the worker processes are seeded independently. This project uses `num_workers=0` (single-process loading) by default, so `seed_everything` provides complete reproducibility. If you modify the DataLoader to use multiple workers, you will need to add a `worker_init_fn` that sets worker-specific seeds.
 
 </details>
 
@@ -603,95 +797,88 @@ Several factors can lower peak validation accuracy: a high `--noise` value (try 
 
 ## Glossary of Terms
 
-Every technical term used in this project is defined below with plain-language explanations. Terms appear in alphabetical order. Cross-references link related concepts together so you can trace how ideas connect.
+Every technical term used in this project is defined below with plain-language explanations aimed at readers who are new to deep learning. Terms appear in alphabetical order, grouped alphabetically. Cross-references help you trace how concepts relate to each other.
 
 <details>
-<summary><strong>A – F</strong></summary>
+<summary><strong>A – C</strong></summary>
 
-| Term | Definition |
+| Term | Full Definition |
 |---|---|
-| <sub>Accuracy</sub> | <sub>The fraction of predictions the model gets correct out of all predictions made. Computed as (correct predictions) / (total predictions). Expressed as a percentage in this project's plots. Accuracy alone can be misleading on imbalanced datasets — see also: Loss, Validation Metrics.</sub> |
-| <sub>Activation Function</sub> | <sub>A non-linear mathematical function applied to the output of each neuron before it is passed to the next layer. Without activation functions, a deep network collapses to a single linear transformation regardless of depth. This project uses ReLU (Rectified Linear Unit): f(x) = max(0, x), which outputs the input directly if positive and zero otherwise. ReLU is preferred because it is computationally cheap and does not suffer from the vanishing gradient problem as severely as older functions like sigmoid.</sub> |
-| <sub>Adam Optimiser</sub> | <sub>Adaptive Moment Estimation — a gradient-based optimisation algorithm that maintains a separate, adaptive learning rate for each model parameter. It combines momentum (remembering the direction of past gradients) with RMSProp (scaling updates by the magnitude of past gradients). In practice Adam converges faster than plain SGD on most tasks and requires less tuning of the learning rate. Used in this project via `torch.optim.Adam`.</sub> |
-| <sub>Backpropagation</sub> | <sub>The algorithm used to compute gradients in a neural network. After the forward pass produces a loss value, backpropagation applies the chain rule of calculus to compute how much each weight contributed to that loss. The result is a gradient tensor for every learnable parameter, which the optimiser then uses to update the weights. In PyTorch this is triggered by calling `loss.backward()`.</sub> |
-| <sub>Batch Normalisation (BN)</sub> | <sub>A technique that normalises the inputs to each layer so that they have approximately zero mean and unit variance across the samples in a mini-batch. This stabilises training by reducing internal covariate shift — the problem where the distribution of each layer's inputs keeps changing as the weights of earlier layers update. BN allows higher learning rates and acts as a mild regulariser. In this project every hidden layer is followed by a BN layer (`nn.BatchNorm1d`).</sub> |
-| <sub>Batch Size</sub> | <sub>The number of training samples processed together in a single forward-backward pass before the weights are updated. Larger batches produce more accurate (lower-variance) gradient estimates but require more memory and can lead to sharp minima that generalise poorly. Smaller batches are noisier but often generalise better. The default in this project is 64. See also: Mini-Batch, Gradient Update Step.</sub> |
-| <sub>Bias (statistical)</sub> | <sub>In the context of the bias-variance tradeoff, bias refers to the error introduced by approximating a complex real-world problem with a simplified model. A high-bias model (such as the `tiny` preset) makes strong assumptions and systematically underpredicts the complexity of the data — this is underfitting. Not to be confused with bias parameters in neural network layers (`nn.Linear` bias terms), which are learnable offsets added to each neuron's output.</sub> |
-| <sub>Binary Classification</sub> | <sub>A machine learning task where the model must assign each input to one of exactly two classes. In this project the two classes are the two moon shapes (Class 0 and Class 1). The model outputs two logits — one per class — and the class with the higher logit is the prediction. See also: Cross-Entropy Loss, Softmax.</sub> |
-| <sub>Checkpoint</sub> | <sub>A file (`.pt` in this project) that stores a snapshot of the model's weights at a specific point during training. Checkpoints allow you to resume training after an interruption, compare the model at different training stages, and roll back to the best-performing epoch without re-training from scratch. Each checkpoint also stores the epoch number and the train/val metrics recorded at that epoch.</sub> |
-| <sub>Convergence</sub> | <sub>The state reached when the model's weights have stabilised and the loss is no longer decreasing meaningfully with additional training. A converged model has found a local minimum (or a good approximation of one) in the loss landscape. Convergence is identified on the loss curve as the point where both train and validation loss flatten. Training beyond convergence risks overfitting.</sub> |
-| <sub>Cosine Annealing</sub> | <sub>A learning rate schedule that reduces the learning rate following the shape of a cosine function from its initial value down toward zero over the total number of training epochs. It provides fast, large steps early in training and slow, precise steps near convergence, without requiring manual tuning of when to reduce the rate. Used in this project via `torch.optim.lr_scheduler.CosineAnnealingLR`.</sub> |
-| <sub>Cross-Entropy Loss</sub> | <sub>The loss function used in this project for binary classification. It measures how far the model's predicted probability distribution is from the true one-hot label distribution. For a correct prediction made with high confidence the loss is near zero; for an incorrect prediction made with high confidence the loss is very large. This asymmetry strongly penalises overconfident wrong predictions. Implemented as `nn.CrossEntropyLoss` in PyTorch, which combines `log_softmax` and `nll_loss` in a single numerically stable operation.</sub> |
-| <sub>DataLoader</sub> | <sub>A PyTorch utility class (`torch.utils.data.DataLoader`) that wraps a Dataset and provides an iterator over mini-batches. It handles shuffling, batching, and (optionally) parallel data loading using worker processes. This project creates one DataLoader for training (with `shuffle=True`) and one for validation (with `shuffle=False`).</sub> |
-| <sub>Decision Boundary</sub> | <sub>The surface in the input feature space where the model assigns equal probability to both classes (P(class=1) = 0.5). Points on one side of the boundary are classified as Class 0; points on the other side as Class 1. Because this project uses 2-D features, the decision boundary is a curve plotted directly in the scatter plot. A well-trained model produces a smooth boundary that closely follows the true moon shapes.</sub> |
-| <sub>Dropout</sub> | <sub>A regularisation technique where, during each training forward pass, each neuron's activation is independently set to zero with probability `p` (the dropout rate). This prevents neurons from co-adapting too strongly — a form of memorisation — and forces the network to learn redundant representations that are more robust. Dropout is only active during training; during inference all neurons are active and activations are scaled by `(1-p)` to maintain the same expected output magnitude. Implemented as `nn.Dropout` in PyTorch.</sub> |
-| <sub>Epoch</sub> | <sub>One complete pass through the entire training dataset. During a single epoch the model processes every training sample exactly once, in mini-batches. Each epoch results in one entry in the loss and accuracy history lists. See the main section: [What Is an Epoch?](#what-is-an-epoch)</sub> |
+| Accuracy | The fraction of predictions the model gets correct out of all predictions made. Computed as `(correct predictions) / (total predictions)` and expressed as a percentage. Accuracy alone can be misleading on imbalanced datasets where one class is far more common than the other — see also: Loss, Validation Metrics, F1-Score. |
+| Activation Function | A non-linear mathematical function applied to the output of each neuron before it passes to the next layer. Without activation functions, stacking multiple linear layers produces a single linear transformation regardless of depth — no additional expressiveness is gained. This project uses ReLU: `f(x) = max(0, x)`, which passes positive values unchanged and outputs zero for negative values. ReLU is fast to compute, avoids the vanishing gradient problem that plagued earlier functions like sigmoid, and produces sparse activations where many neurons output zero. |
+| Adam Optimiser | Adaptive Moment Estimation — a gradient-based optimisation algorithm that maintains a separate, adaptive learning rate for each model parameter. It combines momentum (averaging the direction of recent gradients) with RMSProp (scaling updates by the magnitude of recent gradients). In practice Adam converges faster than plain SGD on most tasks and requires less manual tuning of the learning rate. Used in this project via `torch.optim.Adam` with an initial learning rate of 0.01 and weight decay of 1e-4. |
+| Backpropagation | The algorithm used to compute gradients of the loss with respect to every model parameter. After a forward pass produces a scalar loss value, backpropagation applies the chain rule of calculus layer by layer — from the output back to the input — computing how much each weight contributed to the final loss. The result is a gradient tensor for every learnable parameter. In PyTorch, backpropagation is triggered by calling `loss.backward()` and the gradients are stored in the `.grad` attribute of each parameter tensor. |
+| Batch Normalisation | A technique that normalises the inputs to each layer so they have approximately zero mean and unit variance across the samples in a mini-batch. This stabilises training by reducing internal covariate shift — the problem where the distribution of each layer's inputs keeps changing as earlier layers update their weights, forcing later layers to constantly re-adapt. Batch norm allows higher learning rates, speeds up convergence, and acts as a mild regulariser. In this project every hidden layer is immediately followed by `nn.BatchNorm1d`. |
+| Batch Size | The number of training samples processed together in one forward-backward pass before the weights are updated once. Larger batches produce smoother, lower-variance gradient estimates but require more memory and can converge to sharp minima that generalise poorly. Smaller batches are noisier but often generalise better and require less memory. The default in this project is 64. See also: Mini-Batch, Gradient Update Step, Stochastic Gradient Descent. |
+| Bias-Variance Tradeoff | The fundamental tension in machine learning between two types of error. **Bias** is systematic error from a model that is too simple to capture the true pattern (underfitting). **Variance** is error from a model that is too sensitive to the specific training data (overfitting). Reducing one typically increases the other. Epoch count, model capacity, and regularisation strength are the main levers for navigating this tradeoff. |
+| Checkpoint | A file (`.pt` extension in this project) that stores a snapshot of a model's learned weights at a specific point during training. Checkpoints let you compare the model at different training stages, roll back to a better-performing epoch without re-training from scratch, resume an interrupted training run, and load a trained model for inference without re-running training. |
+| Convergence | The state reached when the model's weights have stabilised and the loss is no longer decreasing meaningfully with additional gradient steps. Identified on the loss curve as the point where both training and validation loss flatten. Training beyond convergence risks overfitting — the model begins fitting noise rather than signal. See also: Early Stopping, Overfitting. |
+| Cosine Annealing | A learning rate schedule that reduces the learning rate following the shape of a cosine function from its initial value toward near-zero over `T_max` epochs. It provides fast, large steps early in training when the model is far from its optimum, and slow, precise steps later when the model is near convergence. Used via `torch.optim.lr_scheduler.CosineAnnealingLR`. The key advantage over step-decay schedules is that it requires no manual specification of decay steps. |
+| Cross-Entropy Loss | The loss function used in this project for classification. For a correct prediction made with high confidence the loss is near zero; for an incorrect prediction made with high confidence the loss is very large — strongly penalising overconfident wrong predictions. For binary classification with `C` classes, cross-entropy is computed as `L = -sum(y_true * log(y_pred))` averaged over the batch. In PyTorch, `nn.CrossEntropyLoss` combines `log_softmax` and negative log-likelihood into one numerically stable operation. |
 
 </details>
 
 <details>
-<summary><strong>F – L</strong></summary>
+<summary><strong>D – G</strong></summary>
 
-| Term | Definition |
+| Term | Full Definition |
 |---|---|
-| <sub>Feature Space</sub> | <sub>The mathematical space defined by all possible input values. In this project the feature space is 2-D (two input features per sample: x-coordinate and y-coordinate of each moon point). The decision boundary is a curve inside this space. In real-world problems feature spaces are often hundreds or thousands of dimensions, making direct visualisation impossible.</sub> |
-| <sub>Forward Pass</sub> | <sub>The computation that flows from the input layer through all hidden layers to the output layer, producing logits (raw predictions). During the forward pass, the input tensor is multiplied by weight matrices, passed through activation functions and normalisation layers, and finally projected to a vector of class scores. In PyTorch the forward pass runs automatically when you call `model(x)`.</sub> |
-| <sub>Generalisation</sub> | <sub>A model's ability to perform well on data it has never seen during training. Generalisation is measured by the gap between training and validation metrics. A model that generalises well has learned the true underlying pattern in the data rather than memorising specific training examples. Regularisation techniques (dropout, weight decay, data augmentation) are all designed to improve generalisation.</sub> |
-| <sub>Gradient</sub> | <sub>A vector that encodes the direction and rate of steepest increase of the loss with respect to each model parameter. The optimiser moves the weights in the direction opposite to the gradient (gradient descent) to reduce the loss. Gradients are computed by backpropagation and stored temporarily in the `.grad` attribute of each parameter tensor in PyTorch.</sub> |
-| <sub>Gradient Descent</sub> | <sub>The family of optimisation algorithms that iteratively update model weights by moving them in the direction opposite to the gradient of the loss. The step size is controlled by the learning rate. Plain (batch) gradient descent computes the gradient over the entire dataset — expensive but accurate. Stochastic Gradient Descent (SGD) computes it over a single sample — cheap but very noisy. Mini-batch gradient descent (used here) is the compromise: gradients computed over a batch of 64 samples.</sub> |
-| <sub>Hyperparameter</sub> | <sub>Any configuration value set before training begins that controls the training process but is not learned from the data. Examples include: epoch count, learning rate, batch size, dropout rate, hidden layer sizes, and weight decay. Hyperparameters must be tuned manually or via automated search. Contrast with model parameters (weights and biases), which are learned automatically during training.</sub> |
-| <sub>Inference</sub> | <sub>Running a trained model on new, unseen data to produce predictions without updating any weights. During inference, gradient computation is disabled (`torch.no_grad()`) to save memory and speed up computation. The decision boundary visualisations in this project are generated by running inference on a dense grid of 90,000 points.</sub> |
-| <sub>Iteration</sub> | <sub>One forward-backward pass over a single mini-batch, resulting in one weight update. An epoch consists of many iterations. With 1,000 samples and batch size 64, one epoch = ~16 iterations. Iteration count is a finer-grained measure of training progress than epoch count.</sub> |
-| <sub>Learning Rate</sub> | <sub>A scalar hyperparameter that controls the size of each weight update step. A learning rate that is too high causes the optimiser to overshoot minima and the loss to oscillate or diverge. A learning rate that is too low makes training extremely slow and may get stuck in poor local minima. The default in this project is 0.01, applied to Adam, and then decayed by cosine annealing over all epochs.</sub> |
-| <sub>Linear Layer</sub> | <sub>The fundamental computational unit of an MLP, implemented as `nn.Linear(in, out)` in PyTorch. It performs the affine transformation y = xW^T + b, where W is a weight matrix of shape (out, in) and b is a bias vector of shape (out). All the learnable parameters in the MLP layers of this project live in these weight matrices and bias vectors.</sub> |
-| <sub>Logits</sub> | <sub>The raw, unnormalised output scores produced by the final linear layer of the network before any activation is applied. Logits can be any real number — they are not constrained to [0, 1]. To convert logits to probabilities, you apply softmax. Cross-entropy loss in PyTorch expects logits directly (not softmax outputs) for numerical stability.</sub> |
-| <sub>Loss</sub> | <sub>A scalar value that quantifies how wrong the model's current predictions are. Lower is better. The loss is the quantity being minimised during training. In this project cross-entropy loss is used. The loss is computed for every mini-batch, and the average over all batches in an epoch is recorded in the history as `train_loss` or `val_loss`.</sub> |
-| <sub>Loss Landscape</sub> | <sub>The high-dimensional surface defined by the loss function over all possible weight configurations. Training is the process of navigating this surface to find a region of low loss. The landscape is non-convex (it has many local minima and saddle points), which is why gradient-based methods can get stuck and why techniques like momentum (built into Adam) and learning rate scheduling help escape poor regions.</sub> |
+| DataLoader | A PyTorch utility class (`torch.utils.data.DataLoader`) that wraps a `Dataset` and provides an iterator over mini-batches. It handles shuffling, batching, and optional parallel data loading using worker processes. In this project one DataLoader is created for training (with `shuffle=True`) and one for validation (with `shuffle=False`). Shuffling the training data each epoch is important because it prevents the model from memorising the sequence of mini-batches rather than their content. |
+| Decision Boundary | The surface (or curve in 2-D) in the feature space where the model assigns equal probability to all classes — P(class=0) = P(class=1) = 0.5. Points on one side are classified as Class 0; points on the other as Class 1. A well-trained model learns a boundary that closely follows the true boundary of the underlying data distribution. In this project the decision boundary is a curve plotted directly on a 2-D scatter plot, which is only possible because the feature space has exactly two dimensions. |
+| Dropout | A regularisation technique where, during each training forward pass, each neuron's activation is set to zero with probability `p` (the dropout rate). This prevents neurons from co-adapting — learning to rely on specific other neurons — and forces the network to learn redundant representations that are more robust to input variation. Dropout is disabled during inference; activations are scaled by `(1-p)` to maintain the same expected output magnitude. Implemented as `nn.Dropout` in PyTorch. |
+| Epoch | One complete pass through the entire training dataset, processing every training sample exactly once in mini-batches. Each epoch produces one entry in the loss and accuracy history lists. The word "epoch" comes from the Greek for a period of time. See: [What Is an Epoch?](#what-is-an-epoch) |
+| Early Stopping | A training strategy where training is halted automatically when the validation loss has not improved for a specified number of consecutive epochs (called the patience). Early stopping is the simplest and most robust method for preventing overfitting — it stops the model exactly at the point of best generalisation without requiring you to know the right epoch count in advance. This project demonstrates the epoch where early stopping would trigger on the loss curve but does not implement it directly — it is left as an exercise. |
+| Feature Space | The mathematical space defined by all possible input values to the model. In this project the feature space is 2-D: each sample has exactly two features (the x and y coordinates of a moon point). Because the space is two-dimensional, the decision boundary and probability surface can be plotted directly. In real-world problems feature spaces have hundreds or thousands of dimensions, making direct visualisation impossible without techniques like PCA or t-SNE. |
+| Forward Pass | The computation that flows from the input layer through all hidden layers to the output layer, producing a vector of logits. At each layer the input is multiplied by the weight matrix, a bias is added, the result is passed through batch normalisation, and then through the ReLU activation. In PyTorch the forward pass runs by calling `model(x)`, which automatically invokes the `forward()` method. |
+| Generalisation | A model's ability to make accurate predictions on data it has never seen during training. Generalisation is measured by the gap between training and validation metrics — a small gap indicates good generalisation; a large gap indicates overfitting. The entire purpose of validation during training is to measure generalisation in real time, so you can stop before the model becomes too specialised to the training set. |
+| Gradient | A vector that encodes the direction and rate of steepest increase of the loss with respect to each model parameter. The optimiser moves the weights in the direction opposite to the gradient (gradient descent) to reduce the loss. Gradients are computed by backpropagation and temporarily stored in the `.grad` attribute of each PyTorch parameter tensor. Calling `optimizer.zero_grad()` clears these gradients before each new mini-batch. |
 
 </details>
 
 <details>
-<summary><strong>M – R</strong></summary>
+<summary><strong>H – O</strong></summary>
 
-| Term | Definition |
+| Term | Full Definition |
 |---|---|
-| <sub>Mini-Batch</sub> | <sub>A small subset of the full training dataset processed together in one forward-backward pass. Mini-batches are a compromise between computing gradients over the entire dataset (accurate but memory-intensive) and computing them over a single sample (fast but very noisy). Batch size 64 means 64 samples are fed through the network simultaneously, producing a gradient estimate before the weights are updated.</sub> |
-| <sub>MLP (Multi-Layer Perceptron)</sub> | <sub>A fully-connected feed-forward neural network where every neuron in one layer is connected to every neuron in the next layer. The model in this project is an MLP with configurable hidden layer sizes, batch normalisation, ReLU activations, and optional dropout. MLPs are the simplest class of deep neural network and are sufficient for the 2-D classification task demonstrated here.</sub> |
-| <sub>Model Parameters</sub> | <sub>The learnable values inside the network — specifically the weight matrices and bias vectors of each `nn.Linear` layer, plus the learnable scale and shift parameters of each `nn.BatchNorm1d` layer. These are updated automatically during training and are what gets saved to disk in checkpoint `.pt` files. Distinct from hyperparameters, which are set manually before training.</sub> |
-| <sub>nn.Module</sub> | <sub>The base class for all neural network components in PyTorch. Any class that subclasses `nn.Module` and defines a `forward()` method becomes a callable neural network layer or model. PyTorch automatically tracks all `nn.Parameter` tensors registered inside an `nn.Module` for gradient computation and optimiser updates.</sub> |
-| <sub>Noise (dataset)</sub> | <sub>In the context of `make_moons`, noise is the standard deviation of Gaussian random values added to the (x, y) coordinates of each data point. Higher noise spreads the points further from their ideal moon positions, increasing class overlap and making the classification task harder. The `--noise` CLI flag controls this value (default 0.20).</sub> |
-| <sub>Overfitting</sub> | <sub>The condition where a model has memorised specific training examples rather than learning the general pattern. An overfit model performs very well on training data but poorly on unseen validation data. On the loss curve, overfitting appears as training loss continuing to fall while validation loss rises or plateaus. On the decision boundary plot, overfitting appears as a jagged, overly-complex boundary that threads through individual training points.</sub> |
-| <sub>Regularisation</sub> | <sub>Any technique that reduces overfitting by constraining the model's ability to memorise training data. In this project, two regularisation methods are used: Dropout (randomly zeroing activations during training) and Weight Decay (adding a penalty term proportional to the L2 norm of the weights to the loss, discouraging large weight values). Regularisation trades a small increase in training loss for a potentially large improvement in validation performance.</sub> |
-| <sub>ReLU (Rectified Linear Unit)</sub> | <sub>The activation function f(x) = max(0, x). It outputs the input unchanged if positive, and zero otherwise. ReLU is the most widely used activation function in modern deep learning because it is computationally cheap (one comparison), produces sparse activations (many zeros), and avoids the vanishing gradient problem that plagued earlier functions like sigmoid. Used after every `nn.Linear` layer in the hidden layers of this project's MLP.</sub> |
-| <sub>RNG Seed</sub> | <sub>Random Number Generator seed — an integer value used to initialise the pseudo-random number generators used by Python, NumPy, and PyTorch. Setting the same seed before every run guarantees that dataset generation, train/val splitting, weight initialisation, and mini-batch ordering are all identical, making experiments reproducible. The `seed_everything()` function in `utils.py` sets all relevant RNG seeds simultaneously.</sub> |
+| Hyperparameter | Any configuration value set before training begins that controls the training process but is not learned from the data itself. Examples: epoch count, learning rate, batch size, dropout rate, weight decay, and model architecture (hidden layer sizes). Contrast with model parameters (weights and biases), which are learned automatically. Hyperparameter tuning is the process of searching for the combination that produces the best validation performance. |
+| Inference | Running a trained model on new, unseen data to produce predictions without updating any weights. During inference, gradient computation is disabled (`torch.no_grad()`) to save memory and speed up computation. Batch normalisation and Dropout switch to their inference-mode behaviour (using running statistics and disabling random zeroing, respectively). The decision boundary plots are produced by running inference on a 90,000-point grid. |
+| Learning Rate | A scalar hyperparameter that controls the size of each weight update step. Too high: the optimiser overshoots minima and the loss oscillates or diverges. Too low: training is extremely slow and may get stuck in poor local minima. The default in this project is 0.01, which is then decayed by cosine annealing over the full training run. The learning rate is the single most important hyperparameter to tune in a new deep learning project. |
+| Logits | The raw, unnormalised output scores produced by the final linear layer of the network before any activation is applied. Logits can be any real number. To convert logits to class probabilities, apply softmax. `nn.CrossEntropyLoss` in PyTorch expects raw logits (not softmax outputs) for numerical stability — it applies `log_softmax` internally in a single fused operation. |
+| Loss | A scalar value that quantifies how wrong the model's current predictions are across a mini-batch or the full dataset. Lower is better. The loss is the quantity being minimised during training. It is computed for every mini-batch, and the average over all batches in one epoch is recorded in the history as `train_loss` or `val_loss`. |
+| Mini-Batch | A small subset of the full training dataset (64 samples by default in this project) processed together in one forward-backward pass. Mini-batches balance the computational efficiency of processing many samples simultaneously against the memory cost of loading the full dataset. Each mini-batch produces one gradient estimate and one weight update. |
+| MLP (Multi-Layer Perceptron) | A fully-connected feed-forward neural network where every neuron in one layer is connected to every neuron in the next. It is the simplest class of deep neural network. The model in this project is an MLP with configurable depth and width, batch normalisation, ReLU activations, and optional dropout. MLPs are sufficient for the 2-D classification task here and are the foundation on which more complex architectures like CNNs and Transformers are built. |
+| Optimiser | An algorithm that uses computed gradients to update the model's weights. This project uses Adam (`torch.optim.Adam`), which adapts the effective learning rate for each parameter individually based on the first and second moments of the gradient history. Other common optimisers include SGD with momentum, AdaGrad, RMSProp, and AdamW. The choice of optimiser affects how quickly the model converges and which local minima it tends to find. |
+| Overfitting | The condition where a model has memorised specific training examples rather than the underlying general pattern. An overfit model performs very well on training data but poorly on unseen data. On the loss curve it appears as training loss continuing to fall while validation loss rises. On the decision boundary plot it appears as a jagged, over-complex boundary that threads through individual training points. |
 
 </details>
 
 <details>
-<summary><strong>S – Z</strong></summary>
+<summary><strong>P – Z</strong></summary>
 
-| Term | Definition |
+| Term | Full Definition |
 |---|---|
-| <sub>Scheduler (Learning Rate)</sub> | <sub>An algorithm that adjusts the learning rate during training according to a predefined schedule. This project uses `CosineAnnealingLR`, which reduces the learning rate following a cosine curve from its initial value toward near-zero over `T_max` epochs. The scheduler's `step()` method is called once per epoch, after the optimiser step. Schedulers help by allowing larger exploratory steps early and precise fine-tuning steps later.</sub> |
-| <sub>Softmax</sub> | <sub>A function that converts a vector of logits into a probability distribution: each output is in (0, 1) and all outputs sum to 1. For binary classification with two output logits [l0, l1], softmax(l1) gives the model's confidence that the input belongs to Class 1. In this project softmax is applied to the model's logits when generating decision boundary plots to produce a smooth probability surface.</sub> |
-| <sub>State Dict</sub> | <sub>A Python dictionary that maps parameter names to their current tensor values — it is a complete serialisation of a model's learned weights. In PyTorch, `model.state_dict()` returns this dictionary, which is what gets saved in checkpoint files. Calling `model.load_state_dict(ckpt)` restores the model to exactly the state it was in when the checkpoint was saved.</sub> |
-| <sub>Synthetic Dataset</sub> | <sub>A dataset generated programmatically by a mathematical procedure rather than collected from real-world observations. The two-moons dataset used here is synthetic: no real data files are needed and the entire dataset is created in memory in milliseconds. Synthetic datasets are ideal for educational projects because their ground truth (the true decision boundary) is known exactly, making it easy to evaluate how well the model has learned.</sub> |
-| <sub>Tensor</sub> | <sub>The fundamental data structure in PyTorch — a multi-dimensional array that lives on a specific device (CPU or GPU) and optionally tracks gradients. All data flowing through the model (inputs, activations, weights, gradients) is represented as tensors. Tensors support the same operations as NumPy arrays but can be accelerated by GPU hardware and participate in PyTorch's automatic differentiation system.</sub> |
-| <sub>Training Split</sub> | <sub>The portion of the dataset used to compute gradients and update model weights during training. In this project 80% of the generated data forms the training split (default `val_split=0.20`). The model sees this data during every epoch and its weights are updated based on the loss computed on this split. See also: Validation Split.</sub> |
-| <sub>Underfitting</sub> | <sub>The condition where a model has not yet learned enough from the training data to make accurate predictions, on either the training set or the validation set. Underfitting appears on the loss curve as both curves being high and flat, and on the decision boundary as a crude, barely-curved line that does not follow the moon shapes. Underfitting can be caused by too few training epochs, a model that is too small (structural underfitting), or a learning rate that is too low.</sub> |
-| <sub>Validation Split</sub> | <sub>A held-out portion of the dataset (20% by default in this project) that is never used for weight updates. After each epoch, the model runs inference on the validation split to measure how well it generalises to unseen data. Validation loss and accuracy are the primary signals for deciding when to stop training. Because the model never trains on this data, validation metrics are an unbiased estimate of real-world performance.</sub> |
-| <sub>Variance (statistical)</sub> | <sub>In the context of the bias-variance tradeoff, variance refers to the sensitivity of the model's predictions to small fluctuations in the training data. A high-variance model (such as the `overfit` preset with many epochs) fits training data tightly, including its noise, and produces very different predictions if the training data changes slightly. High variance is the root cause of overfitting.</sub> |
-| <sub>Virtual Environment (.venv)</sub> | <sub>An isolated Python installation that keeps this project's dependencies separate from the system Python and from other projects. Created with `python -m venv .venv` and activated with `source .venv/bin/activate`. Ensures that the exact package versions listed in `requirements.txt` are used and do not conflict with other installed packages.</sub> |
-| <sub>Weight Decay</sub> | <sub>An L2 regularisation technique that adds a penalty term `(weight_decay / 2) * sum(w^2)` to the loss function for all model weights. This discourages large weight values, which tend to be associated with complex, overfit functions. Controlled via the `weight_decay` argument to `torch.optim.Adam` (default `1e-4` in this project). Large weight decay values strongly penalise complexity; setting it to 0 disables the regularisation entirely.</sub> |
-| <sub>Weights (model)</sub> | <sub>The learnable numerical parameters inside a neural network — specifically the values in the `nn.Linear` weight matrices and bias vectors, and the scale/shift parameters in `nn.BatchNorm1d` layers. Weights start as small random values and are updated by the optimiser at every gradient step. After training, the weights encode everything the model has learned about the data. They are saved to disk in checkpoint `.pt` files using `torch.save`.</sub> |
+| Parameter (model) | The learnable numerical values inside a neural network — specifically the weight matrices and bias vectors in each `nn.Linear` layer, and the learnable scale and shift parameters in each `nn.BatchNorm1d` layer. These are updated automatically during training and are saved in checkpoint `.pt` files. Distinct from hyperparameters, which are set manually. |
+| ReLU | Rectified Linear Unit — the activation function `f(x) = max(0, x)`. Outputs the input unchanged if positive; outputs zero if negative. ReLU is the most widely used activation in modern deep learning because it is computationally cheap, produces sparse activations, avoids the vanishing gradient problem, and in practice trains faster than sigmoid or tanh. |
+| Regularisation | Any technique that reduces overfitting by constraining the model's ability to memorise training data. This project uses Dropout (randomly zeroing activations during training) and Weight Decay (L2 penalty on weight magnitudes). Other regularisation methods include data augmentation, early stopping, label smoothing, and mixup. |
+| Reproducibility | The ability to run an experiment twice and get identical results. In deep learning this requires seeding all random number generators (Python, NumPy, and PyTorch), using deterministic CUDA operations if using a GPU, and fixing the train/val split. The `seed_everything(42)` call in `utils.py` handles this for CPU runs. Note that GPU training may produce small floating-point differences even with seeding due to non-deterministic CUDA kernel implementations. |
+| Scheduler | An algorithm that adjusts the learning rate during training according to a predefined schedule. This project uses `CosineAnnealingLR`, called once per epoch after the optimiser step. Without a scheduler, the learning rate stays constant throughout training, which means large steps continue even when the model is close to convergence and needs fine-grained adjustments. |
+| State Dict | A Python `OrderedDict` mapping parameter names to their current tensor values. It is the standard way to serialise and deserialise PyTorch model weights. `model.state_dict()` returns it; `model.load_state_dict(d)` restores it. Checkpoint files in this project store the state dict as their primary payload. |
+| Tensor | The fundamental data structure in PyTorch — a multi-dimensional array that lives on a specific device (CPU or GPU) and optionally participates in automatic differentiation (gradient tracking). All data flowing through the model is represented as tensors. They support the same operations as NumPy arrays but can be GPU-accelerated. |
+| Underfitting | The condition where a model has not yet learned enough from the training data to make accurate predictions on either training or validation data. Both loss curves are high and flat. Can be caused by too few training epochs (epoch-count underfitting), a model too small to represent the boundary (structural underfitting), or a learning rate that is too low. |
+| Validation Split | A held-out portion of the dataset (20% by default) that is never used for weight updates. After each epoch the model runs inference on the validation split to measure generalisation. Validation metrics are the primary signal for hyperparameter tuning and early stopping decisions. |
+| Weight Decay | An L2 regularisation technique that adds a penalty proportional to the squared magnitude of all weights to the loss function, discouraging large weight values. Large weights tend to produce complex, sharply-curved decision boundaries that overfit. Controlled via the `weight_decay` argument to `torch.optim.Adam` (default `1e-4` in this project). Setting it to 0 disables the regularisation entirely. |
+| Weights | The learnable numerical parameters inside a neural network — the values in the weight matrices and bias vectors of each linear layer. They start as small random values and are updated by the optimiser at every gradient step. After training, the weights encode everything the model has learned about the data distribution. |
 
 </details>
 
 > [!TIP]
-> If you encounter a term in the codebase or in the output that is not listed here, open an issue or check the [PyTorch documentation](https://pytorch.org/docs/stable/index.html) and the [scikit-learn user guide](https://scikit-learn.org/stable/user_guide.html) — both are comprehensive and beginner-friendly.
-
+> If you encounter a term in the codebase or output that is not listed here, the [PyTorch documentation](https://pytorch.org/docs/stable/index.html) and the [scikit-learn user guide](https://scikit-learn.org/stable/user_guide.html) are comprehensive and beginner-friendly. The [Deep Learning book by Goodfellow et al.](https://www.deeplearningbook.org/) (free online) covers all of these concepts in rigorous mathematical detail.
 
 ---
 
 > [!NOTE]
-> This project is intended as an **educational demonstration**. The architecture, dataset, and hyperparameters are all chosen to make learning dynamics maximally visible, not to achieve state-of-the-art results. The concepts demonstrated here — epoch count, underfitting, overfitting, convergence — apply equally to large language models, image classifiers, and any other gradient-trained neural network.
+> This project is intended as an **educational demonstration**. The architecture, dataset, and hyperparameters are all chosen to make learning dynamics maximally visible and understandable, not to achieve state-of-the-art results. Every concept demonstrated here — epoch count, underfitting, overfitting, convergence, learning rate scheduling, decision boundaries — applies equally to large language models, image classifiers, object detectors, and any other gradient-trained neural network. The scale is different; the principles are identical.
+
+---
+
+*Generated with [epochs-demo](https://github.com) — a PyTorch educational project.*
