@@ -112,6 +112,9 @@ flowchart TD
 
 When you call `model(X_batch)`, PyTorch executes the following sequence of tensor operations through the network layers. The input is two raw numbers for each sample (the x-coordinate and y-coordinate of a moon point). The output is two numbers called **logits** — one raw score for each class. The class with the higher logit is the model's prediction.
 
+> [!NOTE]
+> **What is a logit?** The word comes from *log-odds* - the logarithm of the ratio of the probability of an event to the probability of its complement: $\log\frac{p}{1-p}$. In a neural network the term is used more loosely to mean any raw, unbounded output score produced by the final linear layer **before** any normalising function (sigmoid or softmax) is applied. A logit has no fixed range - it can be any real number, positive or negative. A large positive logit means the model has strong evidence for that class; a large negative logit means strong evidence against it; a logit near zero means the model is uncertain. The logit is converted to a probability between 0 and 1 by applying softmax: $P(\text{class}_k) = \frac{e^{z_k}}{\sum_j e^{z_j}}$ where $z_k$ is the logit for class $k$. PyTorch's `CrossEntropyLoss` does this conversion internally, so you always pass raw logits to the loss function - never pre-softmaxed values.
+
 For the `medium` MLP with input `[x, y]`, the computation is:
 
 ```
