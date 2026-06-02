@@ -174,22 +174,49 @@ Everything the model has learned after any number of epochs is stored in a singl
 
 For the `medium` MLP, calling `model.state_dict()` returns a dictionary with the following keys and shapes:
 
+**Table A - Parameter Identity**
+
 | # | Key | Tensor Shape | Total Values | What It Stores |
 |---|---|---|---|---|
-| 1 | `layers.0.weight` | `(64, 2)` | 128 | Weight matrix for Linear(2→64) — maps raw x,y input to 64 features |
-| 2 | `layers.0.bias` | `(64,)` | 64 | Bias vector for the first linear layer |
-| 3 | `layers.1.weight` | `(64,)` | 64 | Learnable scale (gamma) for BatchNorm — applied after normalisation |
-| 4 | `layers.1.bias` | `(64,)` | 64 | Learnable shift (beta) for BatchNorm — shifts each feature's mean |
-| 5 | `layers.1.running_mean` | `(64,)` | 64 | Non-learnable running average of feature means across all batches seen |
-| 6 | `layers.1.running_var` | `(64,)` | 64 | Non-learnable running variance of features across all batches seen |
-| 7 | `layers.3.weight` | `(64, 64)` | 4,096 | Weight matrix for Linear(64→64) — combines first-layer features |
-| 8 | `layers.3.bias` | `(64,)` | 64 | Bias vector for the second linear layer |
-| 9 | `layers.4.weight` | `(64,)` | 64 | BatchNorm scale for second hidden layer |
-| 10 | `layers.4.bias` | `(64,)` | 64 | BatchNorm shift for second hidden layer |
-| 11 | `layers.4.running_mean` | `(64,)` | 64 | Running mean for second BatchNorm |
-| 12 | `layers.4.running_var` | `(64,)` | 64 | Running variance for second BatchNorm |
-| 13 | `output.weight` | `(2, 64)` | 128 | Weight matrix for final Linear(64→2) — produces class logits |
-| 14 | `output.bias` | `(2,)` | 2 | Bias for the output layer — one offset per class |
+| <sub>1</sub> | <sub>`layers.0.weight`</sub> | <sub>`(64, 2)`</sub> | <sub>128</sub> | <sub>Weight matrix for Linear(2→64) - maps raw x,y input to 64 features</sub> |
+| <sub>2</sub> | <sub>`layers.0.bias`</sub> | <sub>`(64,)`</sub> | <sub>64</sub> | <sub>Bias vector for the first linear layer</sub> |
+| <sub>3</sub> | <sub>`layers.1.weight`</sub> | <sub>`(64,)`</sub> | <sub>64</sub> | <sub>Learnable scale (gamma) for BatchNorm - applied after normalisation</sub> |
+| <sub>4</sub> | <sub>`layers.1.bias`</sub> | <sub>`(64,)`</sub> | <sub>64</sub> | <sub>Learnable shift (beta) for BatchNorm - shifts each feature's mean</sub> |
+| <sub>5</sub> | <sub>`layers.1.running_mean`</sub> | <sub>`(64,)`</sub> | <sub>64</sub> | <sub>Non-learnable running average of feature means across all batches seen</sub> |
+| <sub>6</sub> | <sub>`layers.1.running_var`</sub> | <sub>`(64,)`</sub> | <sub>64</sub> | <sub>Non-learnable running variance of features across all batches seen</sub> |
+| <sub>7</sub> | <sub>`layers.3.weight`</sub> | <sub>`(64, 64)`</sub> | <sub>4,096</sub> | <sub>Weight matrix for Linear(64→64) - combines first-layer features</sub> |
+| <sub>8</sub> | <sub>`layers.3.bias`</sub> | <sub>`(64,)`</sub> | <sub>64</sub> | <sub>Bias vector for the second linear layer</sub> |
+| <sub>9</sub> | <sub>`layers.4.weight`</sub> | <sub>`(64,)`</sub> | <sub>64</sub> | <sub>BatchNorm scale for second hidden layer</sub> |
+| <sub>10</sub> | <sub>`layers.4.bias`</sub> | <sub>`(64,)`</sub> | <sub>64</sub> | <sub>BatchNorm shift for second hidden layer</sub> |
+| <sub>11</sub> | <sub>`layers.4.running_mean`</sub> | <sub>`(64,)`</sub> | <sub>64</sub> | <sub>Running mean for second BatchNorm</sub> |
+| <sub>12</sub> | <sub>`layers.4.running_var`</sub> | <sub>`(64,)`</sub> | <sub>64</sub> | <sub>Running variance for second BatchNorm</sub> |
+| <sub>13</sub> | <sub>`output.weight`</sub> | <sub>`(2, 64)`</sub> | <sub>128</sub> | <sub>Weight matrix for final Linear(64→2) - produces class logits</sub> |
+| <sub>14</sub> | <sub>`output.bias`</sub> | <sub>`(2,)`</sub> | <sub>2</sub> | <sub>Two learned scalar offsets, one per class. Initialised to 0. After training each value shifts that class's raw logit up or down independently of the input features. For example `output.bias[1] = +0.4` means every class-1 logit is boosted by 0.4 before softmax, raising the model's baseline confidence for class 1 regardless of what the hidden layers produce. This compensates for class-frequency imbalance and baseline activation magnitude differences between the two output neurons.</sub> |
+
+> [!NOTE]
+> Table A shows the identity, shape, and stored content of every key. Table B below shows when each parameter is most actively changing during training.
+
+**Table B - Training Phase Activity**
+
+| # | Key | Training Phase | What Is Happening to This Parameter |
+|---|---|---|---|
+| <sub>1</sub> | <sub>`layers.0.weight`</sub> | <sub>Underfitting + Learning</sub> | <sub>Largest gradient-driven changes happen here. Neurons rotate and scale their x,y detectors rapidly in the first 20% of training, then fine-tune through the learning phase, and stabilise at convergence.</sub> |
+| <sub>2</sub> | <sub>`layers.0.bias`</sub> | <sub>Underfitting + Learning</sub> | <sub>Shifts neuron activation thresholds quickly during underfitting as the model finds the rough input range, then slows during learning and becomes near-static at convergence.</sub> |
+| <sub>3</sub> | <sub>`layers.1.weight` (BN gamma)</sub> | <sub>Learning</sub> | <sub>Starts at 1.0 for all features. Diverges from 1.0 during the learning phase as BatchNorm learns which features deserve amplification and which should be suppressed. Stabilises well before overfitting.</sub> |
+| <sub>4</sub> | <sub>`layers.1.bias` (BN beta)</sub> | <sub>Learning</sub> | <sub>Starts at 0.0. Shifts per-feature means during the learning phase to compensate for asymmetric activation patterns. Reaches near-final values before convergence.</sub> |
+| <sub>5</sub> | <sub>`layers.1.running_mean`</sub> | <sub>All phases (non-learnable)</sub> | <sub>Updated by an exponential moving average on every forward batch through all phases. Stabilises at convergence when the distribution of activations stops changing. Not updated during overfitting if the model is evaluated in eval mode.</sub> |
+| <sub>6</sub> | <sub>`layers.1.running_var`</sub> | <sub>All phases (non-learnable)</sub> | <sub>Same update rule as running_mean. Converges to the true variance of each feature once weights stop changing. A still-decreasing running_var indicates the model is still in the learning phase.</sub> |
+| <sub>7</sub> | <sub>`layers.3.weight`</sub> | <sub>Learning + Convergence</sub> | <sub>The largest parameter block (4,096 values). Changes steadily through the learning phase as hidden-to-hidden combinations are refined. In the overfitting phase these weights may start over-specialising to individual training points, producing kinks in the decision boundary.</sub> |
+| <sub>8</sub> | <sub>`layers.3.bias`</sub> | <sub>Learning + Convergence</sub> | <sub>Shifts individual second-layer neuron thresholds. Settles during convergence. Small but non-zero values here indicate that certain feature combinations need an activation offset to fire correctly.</sub> |
+| <sub>9</sub> | <sub>`layers.4.weight` (BN gamma)</sub> | <sub>Learning</sub> | <sub>Same role as layers.1.weight but for the second hidden layer. Learns feature importance scaling one layer deeper into the network.</sub> |
+| <sub>10</sub> | <sub>`layers.4.bias` (BN beta)</sub> | <sub>Learning</sub> | <sub>Same role as layers.1.bias for the second BatchNorm. Typically stabilises slightly later than the first layer's BN parameters.</sub> |
+| <sub>11</sub> | <sub>`layers.4.running_mean`</sub> | <sub>All phases (non-learnable)</sub> | <sub>Tracks the running mean of second-layer activations. Because second-layer activations depend on first-layer weights that are still changing, this value stabilises later than layers.1.running_mean.</sub> |
+| <sub>12</sub> | <sub>`layers.4.running_var`</sub> | <sub>All phases (non-learnable)</sub> | <sub>Running variance of second-layer activations. Last of the running statistics to converge, as it reflects the compounded effect of all upstream weight changes.</sub> |
+| <sub>13</sub> | <sub>`output.weight`</sub> | <sub>Learning + Convergence</sub> | <sub>The two rows of this matrix define the final class-voting hyperplane in the 64-dimensional feature space. Row 0 accumulates evidence for class 0; row 1 for class 1. Active learning occurs here throughout the learning phase. During overfitting these weights over-commit to training-specific feature combinations.</sub> |
+| <sub>14</sub> | <sub>`output.bias`</sub> | <sub>Learning + Convergence</sub> | <sub>Calibrates the baseline logit for each class independently of the input. Moves quickly during underfitting to compensate for random weight initialisation, settles at a stable offset during convergence. A large asymmetry between the two values after training (e.g. `[-0.5, +0.5]`) signals that the model learned to compensate for a class imbalance or a systematic activation bias in the preceding layer.</sub> |
+
+> [!NOTE]
+> "Training Phase" in Table B describes the epoch range where each parameter undergoes its most significant changes - it does not mean the parameter is frozen outside that range. All learnable parameters receive gradient updates on every batch throughout the entire training run; only the magnitude of those updates changes as the learning rate decays and gradients shrink.
 
 > [!NOTE]
 > The `medium` model has approximately **4,700 total learnable parameters** — the sum of all the `weight` and `bias` tensors listed above (excluding `running_mean` and `running_var`, which are tracked statistics, not learnable parameters, and do not receive gradients). After training, every one of those 4,700 floating-point numbers has been tuned by thousands of tiny gradient-descent steps across 200 epochs of 16 mini-batches each — a total of approximately 3,200 individual weight updates.
