@@ -300,6 +300,66 @@ The diagram below shows how the weight values change over the course of a 200-ep
 | 100 - 150 | Weights nearly converged; very small updates; loss curve is flat | Boundary smooth and stable; changes barely visible between epochs |
 | 150 - 200 | Weights essentially static for the medium model; may start overfitting for overfit preset | Boundary barely changes (medium); may start developing kinks (overfit) |
 
+---
+
+#### Checkpoint Matrix — Before and After Each Saved Epoch
+
+The five `.pt` files in `checkpoints/` capture the model at evenly-spaced snapshots. The matrix below shows the actual measured metrics from `outputs/history.json` for each saved epoch, what the model looked like just before that snapshot was written, and what changed by the time it was written.
+
+```mermaid
+timeline
+    title Model State at Each Saved Checkpoint
+    section Epoch 1  •  Underfitting
+        Before  : Weights near random init
+                : Loss ≈ 1.1 (chance level)
+                : Boundary — nearly random line
+        After   : train_loss 0.2735  val_loss 0.2387
+                : train_acc  87.9 %  val_acc  92.0 %
+                : Boundary — rough linear cut through moons
+    section Epoch 12  •  Learning
+        Before  : Large gradients still driving fast weight moves
+                : Decision boundary curving but ragged
+        After   : train_loss 0.1028  val_loss 0.0970
+                : train_acc  96.1 %  val_acc  96.5 %
+                : Boundary — follows moon shapes cleanly
+    section Epoch 25  •  Convergence begins
+        Before  : LR decaying — weight updates shrinking
+                : BatchNorm statistics nearly stabilised
+        After   : train_loss 0.0898  val_loss 0.1058
+                : train_acc  96.5 %  val_acc  96.5 %
+                : Boundary — smooth  val_loss slightly above train_loss (gap opening)
+    section Epoch 37  •  Convergence / early Overfitting
+        Before  : Gradients very small — model near local minimum
+                : val_loss stopped falling while train_loss still creeps down
+        After   : train_loss 0.0817  val_loss 0.0983
+                : train_acc  97.0 %  val_acc  96.5 %
+                : Boundary — minimal visible change from epoch 25
+    section Epoch 50  •  Overfitting zone
+        Before  : LR near minimum of cosine schedule
+                : Further updates produce negligible generalisation gain
+        After   : train_loss 0.0876  val_loss 0.1020
+                : train_acc  96.4 %  val_acc  96.5 %
+                : Boundary — stable  train_loss > val_loss inversion visible
+```
+
+> [!NOTE]
+> The timeline above is rendered from `outputs/history.json`. Each "Before" row is the conceptual model state entering that epoch; each "After" row is the recorded state once that epoch completed and the checkpoint was written to disk.
+
+The table below complements the timeline with a side-by-side delta view - showing how much each metric moved between consecutive checkpoints.
+
+**Table — Metric Deltas Between Consecutive Checkpoints**
+
+| # | Checkpoint | Train Loss | Val Loss | Train Acc | Val Acc | Phase |
+|---|---|---|---|---|---|---|
+| <sub>1</sub> | <sub>`epoch_0001.pt`</sub> | <sub>0.2735</sub> | <sub>0.2387</sub> | <sub>87.9 %</sub> | <sub>92.0 %</sub> | <sub>🔴 Underfitting</sub> |
+| <sub>2</sub> | <sub>`epoch_0012.pt`</sub> | <sub>0.1028 (-0.1707)</sub> | <sub>0.0970 (-0.1417)</sub> | <sub>96.1 % (+8.2 pp)</sub> | <sub>96.5 % (+4.5 pp)</sub> | <sub>🟠 Learning</sub> |
+| <sub>3</sub> | <sub>`epoch_0025.pt`</sub> | <sub>0.0898 (-0.0130)</sub> | <sub>0.1058 (+0.0088)</sub> | <sub>96.5 % (+0.4 pp)</sub> | <sub>96.5 % (±0)</sub> | <sub>🟡 Convergence</sub> |
+| <sub>4</sub> | <sub>`epoch_0037.pt`</sub> | <sub>0.0817 (-0.0081)</sub> | <sub>0.0983 (-0.0075)</sub> | <sub>97.0 % (+0.5 pp)</sub> | <sub>96.5 % (±0)</sub> | <sub>🟡 Convergence / early Overfit</sub> |
+| <sub>5</sub> | <sub>`epoch_0050.pt`</sub> | <sub>0.0876 (+0.0059)</sub> | <sub>0.1020 (+0.0037)</sub> | <sub>96.4 % (-0.6 pp)</sub> | <sub>96.5 % (±0)</sub> | <sub>🔵 Overfitting zone</sub> |
+
+> [!NOTE]
+> The largest single jump in every metric happens between epoch 1 and epoch 12 — an 11-epoch window where the model recovers from random initialisation and learns the bulk of the moon boundary. By epoch 25 the val_acc has completely plateaued at 96.5 % and stays there for the remainder of training, while train_loss continues to drift slightly downward. This train/val divergence starting at epoch 25 is the earliest signal that the model has entered the convergence zone and further training will not improve generalisation.
+
 > [!TIP]
 > You can measure how much the weights are changing per epoch by computing the **L2 norm of the gradient** before each optimiser step: `grad_norm = sum(p.grad.norm()**2 for p in model.parameters())**0.5`. A large gradient norm means the model is still learning fast. A gradient norm near zero means the model has converged. This metric, sometimes called the gradient signal, is a more direct measure of learning progress than the loss value itself.
 
