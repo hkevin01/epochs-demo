@@ -58,6 +58,9 @@ An **epoch** is one complete, sequential pass through the entire training datase
 The concept of an epoch is fundamental because neural networks do not — and cannot — learn everything they need from a single pass over the data. **Gradient descent** is an iterative optimisation algorithm: each step moves the model's weights only a small distance toward a lower-loss configuration. A single epoch delivers one round of feedback from every sample, but the adjustments it produces are far too small to bring a randomly initialised model to a useful state. Repeating this process over many epochs allows the model to progressively refine its internal representations, correct mistakes from earlier rounds, and **converge** toward a stable, low-loss configuration where the weights stop changing significantly from epoch to epoch.
 
 > [!NOTE]
+> **Plain English summary:** The model makes guesses on small groups of examples (mini-batches), checks how wrong it was (loss function), figures out which direction to nudge each internal number to be less wrong (gradient), then nudges each number a tiny amount in that direction (optimiser). Do that for every small group in the dataset = one epoch. Repeat for many epochs until the guesses stop improving.
+
+> [!NOTE]
 > An epoch is **not** the same as a gradient update step. A **gradient update step** (also called an iteration or a step) happens once per mini-batch — the weights are adjusted after seeing just `batch_size` samples. An epoch contains many gradient steps. If your dataset has 1,000 samples and you use a batch size of 64, each epoch contains approximately `ceil(1000 / 64) = 16` gradient update steps. This distinction matters when comparing training speed between runs with different batch sizes — a run with batch size 16 performs 4x more weight updates per epoch than one with batch size 64, even if both process the same data.
 
 > [!TIP]
@@ -131,6 +134,13 @@ Output:     [logit_class0, logit_class1]    shape: (64, 2)
 ```
 
 > [!NOTE]
+> **What do those layer names actually mean?**
+> - **Linear(2 → 64):** A fully-connected layer - every input number is multiplied by a learned weight and added to every output number. Think of it as 64 different weighted combinations of the two input coordinates.
+> - **BatchNorm1d:** After each linear layer, the numbers can become very large or very small, which slows learning. BatchNorm re-centres and rescales them to a predictable range - like adjusting the volume back to a comfortable level after each song.
+> - **ReLU:** A simple on/off gate. If a neuron's output is positive, it passes through unchanged. If it's negative, it becomes zero. This one-line operation is what allows the network to learn curved shapes instead of just straight lines.
+> - **Dropout(p=0.1):** During training, 10% of neuron outputs are randomly zeroed out on each pass. This forces the network to not rely too heavily on any single neuron - similar to studying in rotating groups so you never depend entirely on one person's notes. It reduces overfitting.
+
+> [!NOTE]
 > At this stage the output numbers are **not** probabilities. They are raw, unconstrained scores — a logit of `3.4` for class 1 and `-1.2` for class 0 just means "the model strongly believes this point is class 1." To convert logits to probabilities between 0 and 1 that sum to 1, you apply **softmax**: `P(class_k) = exp(logit_k) / sum(exp(logits))`. `CrossEntropyLoss` applies this conversion internally, which is why you pass raw logits to the loss function rather than softmax outputs.
 
 ---
@@ -146,6 +156,9 @@ For a single weight `w`, the update rule used by gradient descent is:
 ```
 w_new = w_old  -  learning_rate × gradient
 ```
+
+> [!NOTE]
+> **Plain English:** The gradient tells you which direction makes the loss go up. The formula says: step in the opposite direction by a small amount. The **learning rate** controls the step size - too large and you overshoot the good solution, too small and training takes forever. With **Adam**, the step size is automatically tuned separately for each weight based on its history of past gradients, so weights that have been changing a lot get smaller steps and weights that have been changing very little get larger steps.
 
 With Adam, the learning rate is adjusted individually for each weight based on the history of its past gradients, which makes the optimiser converge faster and handle parameters with very different gradient magnitudes more gracefully than plain SGD.
 
@@ -374,12 +387,24 @@ When a neural network is first initialised, its weights are assigned small rando
 
 Over successive epochs, the model experiences the same data from different random mini-batch orderings (because `shuffle=True` in the DataLoader). This **stochastic shuffling** is important: it introduces controlled variability into the gradient estimates, which prevents the optimiser from following the exact same update path every epoch and prevents the model from memorising the sequence of training examples rather than their content. Each epoch with a new shuffling gives the optimiser a slightly different view of the training set, helping it explore the loss landscape more effectively.
 
+> [!NOTE]
+> **Plain English - stochastic shuffling:** Every epoch the training data is dealt out into new random mini-batches, like reshuffling a deck of cards before each round. This means the model never memorises the order in which examples appear - it has to learn patterns that hold no matter what order the data arrives in.
+
 The **cosine annealing learning-rate scheduler** used in this project gradually reduces the learning rate following a cosine curve over the full training run — allowing large, exploratory weight updates early in training when the model is far from its optimum, and progressively smaller, fine-grained adjustments later when the model is near convergence and large steps would overshoot the minimum. This automatic decay removes one of the most tedious hyperparameter decisions in deep learning: figuring out when to reduce the learning rate and by how much.
+
+> [!NOTE]
+> **Plain English - cosine annealing:** Think of it like landing a plane. Early in training you are flying fast - big learning rate means big weight changes, covering a lot of ground quickly. As you get closer to a good solution (the runway), you gradually slow down so you land smoothly instead of crashing. The cosine curve just gives a natural smooth shape to that deceleration, starting fast, slowing gradually, and nearly stopping at the end.
 
 > [!IMPORTANT]
 > Training for **too few** epochs leaves the model in an **underfitted** state. It has not yet discovered the underlying pattern in the data and will perform poorly on both training and validation data because its weights have not been sufficiently adjusted away from their random initialisation. Training for **too many** epochs causes the model to memorise training-set noise rather than the true signal — a phenomenon called **overfitting** — where training accuracy keeps rising but validation accuracy plateaus or falls because the model has specialised too tightly to the exact training examples it was shown.
 
 The central tension between underfitting and overfitting — known as the **bias-variance tradeoff** — makes epoch selection one of the most important **hyperparameter** decisions in deep learning. A hyperparameter is any configuration value set before training begins that controls the training process but is not itself learned from data. Epoch count, learning rate, batch size, dropout rate, and model size are all hyperparameters. This project exists to make the bias-variance tension visible, measurable, and tunable through a simple command-line interface.
+
+> [!NOTE]
+> **Plain English - bias-variance tradeoff:** Underfitting (high bias) is like a student who skims the textbook and only learns the chapter headings - they miss all the real detail. Overfitting (high variance) is like a student who memorises every sentence word-for-word - they ace questions about the exact book but fail as soon as anything is phrased differently. The goal is the student in the middle: someone who genuinely understood the material.
+
+> [!NOTE]
+> **Plain English - hyperparameters vs parameters:** The model's **parameters** (weights and biases) are learned automatically from data during training - you never set them directly. **Hyperparameters** are the settings you choose before training starts, like how long to train, how big to make the model, and how fast to learn. The model cannot learn its own hyperparameters from the data - that is your job as the practitioner.
 
 > [!CAUTION]
 > There is no single correct number of epochs that works for all problems. The right epoch count depends on your dataset size, model capacity, learning rate, regularisation strength, and noise level. Always monitor the **validation loss** curve — not the training loss — to decide when to stop. The validation loss is the only signal that tells you how well the model generalises to unseen data.
@@ -408,6 +433,13 @@ As epochs increase, every model trained with gradient descent passes through fou
 
 **Phase 4 — Overfitting:** In the final phase the training loss continues to creep down slightly while the validation loss turns upward. On the decision boundary plot, the boundary begins to develop unnecessary kinks and bulges that thread through individual training points rather than following the smooth underlying pattern. The model is memorising noise. Training accuracy approaches 100% while validation accuracy falls — the gap between the two is the canonical signature of overfitting.
 
+> [!NOTE]
+> **Plain English - the four phases in one sentence each:**
+> - **Underfitting:** The model is still basically guessing - keep training.
+> - **Learning:** The model is genuinely getting smarter at a healthy pace - this is the productive zone.
+> - **Convergence:** The model has figured it out and improvements have nearly stopped - this is your best checkpoint.
+> - **Overfitting:** The model stopped learning real patterns and started memorising quirks in the training data - stop here or earlier.
+
 ---
 
 ## Tech Stack and Architecture
@@ -428,6 +460,9 @@ This project is built on a carefully chosen stack that balances simplicity, spee
 
 > [!NOTE]
 > PyTorch's **dynamic computation graph** (also called eager mode) means the graph is built at runtime as Python code executes, making debugging straightforward — you can insert `print()` statements or use a debugger anywhere in the forward pass and inspect intermediate tensor values. Older frameworks like TensorFlow 1.x used static graphs that were compiled before execution, making debugging much harder. PyTorch 2.0 introduced `torch.compile()` for optional static optimisation, but this project uses eager mode for maximum transparency.
+
+> [!NOTE]
+> **Plain English - dynamic computation graph:** When your Python code runs `output = model(input)`, PyTorch builds a record of every mathematical operation that happened - which numbers were multiplied, which were added, and in what order. It keeps this record so that during the backward pass it can trace back through every step and calculate how to adjust each weight. Think of it like a receipt that lists every calculation, so the optimiser can work out exactly which calculations need to change to reduce the bill (the loss).
 
 ---
 
