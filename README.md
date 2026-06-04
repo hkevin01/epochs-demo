@@ -107,11 +107,45 @@ flowchart TD
 ```
 
 > [!NOTE]
-> **Why zero the gradients before every mini-batch?** PyTorch accumulates (adds) gradients into `.grad` by default rather than overwriting them. This design choice exists to support advanced techniques like gradient accumulation over multiple mini-batches. For standard training you must explicitly call `optimizer.zero_grad()` at the start of each mini-batch, otherwise the gradients from the previous batch are added to the current batch's gradients, producing incorrect and unstable updates. Forgetting `zero_grad()` is one of the most common bugs in PyTorch code.
+> The six steps inside the training loop are explained in depth in the subsections below. Each subsection corresponds to one numbered box in the diagram above.
 
 ---
 
-### What the Forward Pass Actually Does
+### Step ① — Load Mini-Batch
+
+The **DataLoader** slices the shuffled training set into fixed-size chunks called **mini-batches**. Each mini-batch is two tensors handed together to the model: `X_batch` containing the input features and `y_batch` containing the true class labels.
+
+**What a mini-batch physically looks like (batch size = 4, shown for clarity):**
+
+```
+X_batch  shape: (4, 2)          y_batch  shape: (4,)
+┌─────────────────────┐         ┌─────┐
+│  row 0:  [ 0.82, -0.31] │         │  1  │  <- upper moon
+│  row 1:  [-0.44,  0.77] │         │  0  │  <- lower moon
+│  row 2:  [ 1.13,  0.05] │         │  1  │  <- upper moon
+│  row 3:  [-0.91, -0.48] │         │  0  │  <- lower moon
+└─────────────────────┘         └─────┘
+  each row = one data point         each value = true class
+  col 0 = x coordinate              0 = lower moon
+  col 1 = y coordinate              1 = upper moon
+```
+
+In production this project uses **batch size = 64**, so `X_batch` is shape `(64, 2)` - a grid of 64 rows and 2 columns. Every row is one point from the two-moons scatter plot. The full training set has 800 points, so each epoch contains `ceil(800 / 64) = 13` mini-batches.
+
+**Why not feed all 800 points at once?**
+
+| # | Approach | Memory | Updates per Epoch | Gradient Quality |
+|---|---|---|---|---|
+| <sub>1</sub> | <sub>Full batch (800)</sub> | <sub>High</sub> | <sub>1</sub> | <sub>Exact - uses all data</sub> |
+| <sub>2</sub> | <sub>Mini-batch (64) - used here</sub> | <sub>Low</sub> | <sub>13</sub> | <sub>Good estimate - fast learning</sub> |
+| <sub>3</sub> | <sub>Single sample (1)</sub> | <sub>Minimal</sub> | <sub>800</sub> | <sub>Very noisy - unstable</sub> |
+
+> [!NOTE]
+> **Plain English:** A mini-batch is like grading a random sample of 64 homework papers rather than all 800 at once. You get a pretty good estimate of how the whole class is doing, you can give feedback quickly, and you do it 13 times per epoch instead of just once. That means 13 weight updates per epoch instead of 1 - the model learns much faster.
+
+---
+
+### Step ② — Forward Pass
 
 When you call `model(X_batch)`, PyTorch executes the following sequence of tensor operations through the network layers. The input is two raw numbers for each sample (the x-coordinate and y-coordinate of a moon point). The output is two numbers called **logits** — one raw score for each class. The class with the higher logit is the model's prediction.
 
@@ -143,9 +177,139 @@ Output:     [logit_class0, logit_class1]    shape: (64, 2)
 > [!NOTE]
 > At this stage the output numbers are **not** probabilities. They are raw, unconstrained scores — a logit of `3.4` for class 1 and `-1.2` for class 0 just means "the model strongly believes this point is class 1." To convert logits to probabilities between 0 and 1 that sum to 1, you apply **softmax**: `P(class_k) = exp(logit_k) / sum(exp(logits))`. `CrossEntropyLoss` applies this conversion internally, which is why you pass raw logits to the loss function rather than softmax outputs.
 
+**Shape flow through every layer for one mini-batch of 64 points:**
+
+```mermaid
+flowchart TD
+    A["X_batch\nshape: 64 x 2\n64 points, each with x and y"] --> B
+    B["After Linear(2 to 64)\nshape: 64 x 64\nW1 shape: 64 x 2  bias: 64\neach point now has 64 features"] --> C
+    C["After BatchNorm1d\nshape: 64 x 64  unchanged\nvalues re-centred: mean ~0, std ~1\nlarge and small numbers normalised"] --> D
+    D["After ReLU\nshape: 64 x 64  unchanged\nnegative values zeroed out\nroughly half the values become 0"] --> E
+    E["After Dropout(0.1) - training only\nshape: 64 x 64  unchanged\n~6 of 64 features zeroed randomly\nremaining values scaled up by 1/0.9"] --> F
+    F["After Linear(64 to 64)\nshape: 64 x 64\nW2 shape: 64 x 64  bias: 64\nfeatures recombined"] --> G
+    G["After BatchNorm1d + ReLU\nshape: 64 x 64  unchanged\nsame normalise-then-clip pattern"] --> H
+    H["After Linear(64 to 2)\nshape: 64 x 2\nW3 shape: 2 x 64  bias: 2\nfinal layer collapses to 2 scores"] --> I
+    I["Output logits\nshape: 64 x 2\ncol 0 = raw score for class 0\ncol 1 = raw score for class 1"]
+
+    style A fill:#DBEAFE,stroke:#2563EB,color:#1e3a5f
+    style I fill:#DCFCE7,stroke:#16A34A,color:#14532d
+    style E fill:#FEF9C3,stroke:#b45309,color:#713f12
+```
+
+**What the values look like at each stage for a single sample `[0.82, -0.31]`:**
+
+```
+Input            [ 0.82, -0.31 ]                     shape: (2,)
+
+After Linear1    [ 1.24,  0.03, -0.87,  0.55, ... ]  shape: (64,)
+                   ^large  ^near0 ^neg    ^pos
+                   raw mix of x and y via learned weights
+
+After BatchNorm  [ 1.41,  0.02, -0.99,  0.63, ... ]  shape: (64,)
+                   values shifted so the batch has mean~0, std~1
+                   individual values change slightly, pattern preserved
+
+After ReLU       [ 1.41,  0.02,  0.00,  0.63, ... ]  shape: (64,)
+                   negative -0.99 becomes 0.00
+                   positive values pass through unchanged
+
+After Linear2+BN+ReLU  [ 0.94, 0.00, 1.22, 0.00, ... ]  shape: (64,)
+                         second layer recombines features
+
+Output logits    [ -1.2,  3.4 ]                      shape: (2,)
+                    ^class0    ^class1
+                    model predicts class 1 (higher score wins)
+```
+
 ---
 
-### What the Backward Pass Actually Does
+### Step ③ — Compute Loss
+
+After the forward pass produces a `(64, 2)` logits tensor, `CrossEntropyLoss` compares those predictions against the true labels `y_batch` of shape `(64,)` and produces **a single scalar number** - the loss.
+
+**What the single scalar actually represents:**
+
+> The loss is the **average wrongness** of the model across all 64 samples in the mini-batch. A loss of `0.847` means: on average, for each sample, the model placed about `e^{-0.847} ≈ 43%` probability on the correct class. A perfect model (100% on correct class every time) would have loss = 0. A random guesser on a 2-class problem has loss ≈ `ln(2) ≈ 0.693`.
+
+**How CrossEntropyLoss turns 64 rows into one number - step by step:**
+
+```
+Step 1 - Logits for 4 samples (showing 4 of 64 for clarity):
+         class0   class1   true_label
+row 0: [ -1.20,   3.40 ]     1        <- predicts class 1 correctly
+row 1: [  2.10,  -0.50 ]     0        <- predicts class 0 correctly
+row 2: [  0.30,   0.28 ]     1        <- uncertain, small gap
+row 3: [  1.80,   0.10 ]     1        <- predicts class 0 WRONGLY
+
+Step 2 - Softmax converts logits to probabilities (sum to 1 per row):
+         class0   class1
+row 0: [  0.01,   0.99 ]   true=1  prob of correct = 0.99
+row 1: [  0.93,   0.07 ]   true=0  prob of correct = 0.93
+row 2: [  0.50,   0.50 ]   true=1  prob of correct = 0.50
+row 3: [  0.83,   0.17 ]   true=1  prob of correct = 0.17  <- model was wrong
+
+Step 3 - Cross-entropy: take -log of the correct class probability:
+row 0:  -log(0.99) =  0.01   (confident and right = tiny penalty)
+row 1:  -log(0.93) =  0.07   (confident and right = tiny penalty)
+row 2:  -log(0.50) =  0.69   (uncertain = medium penalty)
+row 3:  -log(0.17) =  1.77   (confident and WRONG = large penalty)
+
+Step 4 - Average across all 64 rows:
+         loss = mean([0.01, 0.07, 0.69, 1.77, ...]) = 0.847
+                                                       ^^^^^
+                                               this is the scalar
+```
+
+> [!NOTE]
+> **Why -log?** The function `-log(p)` has a key property: when `p` is close to 1 (model is confident and correct), `-log(p)` is close to 0 - almost no penalty. When `p` is close to 0 (model is confident and wrong), `-log(p)` shoots toward infinity - a huge penalty. This asymmetry is exactly what you want from a training signal: being confidently wrong hurts far more than being uncertain.
+
+> [!NOTE]
+> **What does a loss of 0.847 mean in plain English?** On this mini-batch the model is moderately confused. A loss below 0.1 means the model is highly confident and correct on almost every sample. A loss above 0.5 means the model is either uncertain on most samples or confidently wrong on some. At the very start of training (random weights) loss is typically around `0.693` for a 2-class problem.
+
+---
+
+### Step ④ — Zero Gradients
+
+Before computing new gradients, every parameter's `.grad` attribute must be reset to zero. This happens via `optimizer.zero_grad()`.
+
+**Why this step is necessary - what `.grad` contains before and after:**
+
+```
+Before zero_grad() - .grad still holds values from the PREVIOUS mini-batch:
+
+layers.0.weight.grad  shape: (64, 2)    <- same shape as the weight itself
+  [[ +0.034,  -0.012 ],
+   [ -0.081,  +0.063 ],
+   [ +0.007,  +0.041 ],
+   ...64 rows...]                       <- leftover from batch N-1
+
+After zero_grad() - all values wiped to exactly 0.0:
+
+layers.0.weight.grad  shape: (64, 2)
+  [[ 0.000,  0.000 ],
+   [ 0.000,  0.000 ],
+   [ 0.000,  0.000 ],
+   ...64 rows of zeros...]              <- clean slate for batch N
+```
+
+**What goes wrong if you forget `zero_grad()`:**
+
+```
+Batch 1 gradients:   w.grad = [ +0.08, -0.03 ]   (correct for batch 1)
+Batch 2 gradients:   w.grad = [ +0.05, +0.01 ]   (what batch 2 SHOULD give)
+
+Without zero_grad(): w.grad = [ +0.13, -0.02 ]   (batch 1 + batch 2 ADDED)
+                                ^wrong  ^wrong
+Optimiser applies the WRONG update - the model trains incorrectly.
+Loss may not converge, or converges to a worse solution.
+```
+
+> [!NOTE]
+> **Why does PyTorch accumulate instead of overwrite by default?** It is a deliberate design choice for **gradient accumulation** - a technique used when your GPU cannot fit a large batch in memory. You run several small batches, accumulate their gradients without zeroing, then apply one combined update as if you had used a larger batch. For standard training you never want this - so `zero_grad()` must be called explicitly before every batch.
+
+---
+
+### Step ⑤ — Backward Pass
 
 After the forward pass produces a scalar loss value (e.g. `0.847`), PyTorch knows how that loss was computed — it tracked every operation in a **computation graph** built automatically during the forward pass. The backward pass walks this graph in reverse, applying the chain rule of calculus at each step to compute how much each individual weight contributed to the final loss.
 
@@ -162,8 +326,72 @@ w_new = w_old  -  learning_rate × gradient
 
 With Adam, the learning rate is adjusted individually for each weight based on the history of its past gradients, which makes the optimiser converge faster and handle parameters with very different gradient magnitudes more gracefully than plain SGD.
 
+**What the gradient matrices look like after `loss.backward()` - every parameter gets a `.grad` of the same shape:**
+
+```
+layers.0.weight        shape: (64, 2)     64 neurons, 2 inputs each
+layers.0.weight.grad   shape: (64, 2)     one gradient per weight
+
+  weight value:         gradient after backward:
+  [[ 0.45, -0.22 ],     [[ +0.034, -0.019 ],
+   [-0.81,  0.63 ],      [ -0.081, +0.063 ],
+   [ 0.12,  0.39 ],      [ +0.002, +0.007 ],
+   ...                   ...              ]
+
+Reading the gradient:
+  +0.034 on weight[0,0]:  increasing this weight raises the loss -> decrease it
+  -0.081 on weight[1,0]:  increasing this weight lowers the loss -> increase it
+  +0.002 on weight[2,0]:  very small gradient -> this weight barely affects loss
+
+output.weight          shape: (2, 64)     2 classes, 64 incoming features
+output.weight.grad     shape: (2, 64)     one gradient per weight
+
+  row 0 gradients (class 0 detector):  [ +0.12, -0.05, +0.03, ... ]  64 values
+  row 1 gradients (class 1 detector):  [ -0.12, +0.05, -0.03, ... ]  64 values
+  note: output layer gradients are typically mirror-opposite for 2-class problems
+```
+
+> [!NOTE]
+> **Plain English - what backward pass actually does:** Imagine each weight is a dial. The gradient for that dial answers: "if I turn this dial up by a tiny amount, does the model's total wrongness (loss) go up or down?" The backward pass computes that answer for every single dial simultaneously - all ~4,700 of them - in one efficient pass through the network in reverse. No weights change yet. Only the answer is written down. `optimizer.step()` (Step ⑥) is what actually turns the dials.
+
 > [!IMPORTANT]
 > The backward pass does **not** change any weights. It only computes and stores gradients in the `.grad` attribute of each parameter tensor. The actual weight change happens in the next step: `optimizer.step()`. This two-step design — compute gradients, then apply them — is what allows advanced techniques like gradient clipping (capping gradient magnitudes before they are applied) and gradient accumulation (summing gradients over multiple batches before applying a single large update).
+
+---
+
+### Step ⑥ — Weight Update
+
+Once every parameter has a `.grad` value from the backward pass, `optimizer.step()` applies the actual update. For plain gradient descent the rule is `w_new = w_old - lr * grad`. Adam adds two refinements: it tracks a running average of past gradients (momentum) and a running average of squared gradients (scaling), producing an **adaptive effective step size** per weight.
+
+**Before and after `optimizer.step()` for three example weights:**
+
+```
+Parameter           Before step()    Gradient    After step()     Changed by
+────────────────────────────────────────────────────────────────────────────
+layers.0.weight[0,0]  +0.4500        +0.034       +0.4491         -0.0009
+layers.0.weight[1,0]  -0.8100        -0.081       -0.8089         +0.0011
+layers.0.weight[2,0]  +0.1200        +0.002       +0.1199         -0.0001
+output.bias[1]         +0.2300        -0.120       +0.2313         +0.0013
+```
+
+> The effective step size (~0.001) is much smaller than the raw gradient. Adam divides the gradient by a stability factor derived from its history, so a gradient of `0.034` becomes a weight change of only `0.0009`. This prevents large, destabilising jumps.
+
+**What accumulates across an entire epoch (13 mini-batches):**
+
+```
+Epoch start:  layers.0.weight[0,0] = +0.4500
+
+After batch 1:   +0.4491   (nudged down - gradient was positive)
+After batch 2:   +0.4483   (nudged down again)
+After batch 3:   +0.4481   (small nudge - gradient was small)
+After batch 4:   +0.4476
+After batch 5:   +0.4469
+...13 batches...
+Epoch end:    layers.0.weight[0,0] = +0.4421   (total move: -0.0079 this epoch)
+```
+
+> [!NOTE]
+> **Plain English - why so many tiny steps?** One large step would likely overshoot the best weight value - like trying to land a plane by cutting the engine at altitude instead of gradually descending. Many small steps let the optimiser feel its way toward the minimum of the loss surface, correcting course after each batch. The learning rate decay (cosine annealing) makes the steps progressively smaller as training progresses, so early epochs move fast and later epochs fine-tune precisely.
 
 ---
 
