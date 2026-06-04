@@ -349,7 +349,13 @@ w_new = w_old  -  learning_rate × gradient
 ```
 
 > [!NOTE]
-> **Plain English:** The gradient tells you which direction makes the loss go up. The formula says: step in the opposite direction by a small amount. The **learning rate** controls the step size - too large and you overshoot the good solution, too small and training takes forever. With **Adam**, the step size is automatically tuned separately for each weight based on its history of past gradients, so weights that have been changing a lot get smaller steps and weights that have been changing very little get larger steps.
+> **Plain English:** The gradient tells you which direction makes the loss go up. The formula says: step in the opposite direction by a small amount. The **learning rate** controls the step size - too large and you overshoot the good solution, too small and training takes forever.
+>
+> With plain **SGD** every weight gets exactly the same step size: `new_weight = old_weight - learning_rate * gradient`. It is the simplest possible rule - and it works - but it requires careful hand-tuning of the learning rate.
+>
+> **Adam** (Adaptive Moment Estimation) automatically tunes the step size per weight: weights that have been changing a lot recently get a smaller nudge; weights that have barely moved get a larger one. In practice this means Adam almost always converges faster than SGD with less manual tuning.
+>
+> **AdamW** is Adam with one important fix: it applies weight decay correctly. Weight decay is a gentle penalty that pulls every weight slowly back toward zero each step, which prevents weights from growing too large and overfitting. Adam applies this penalty through the gradient calculation, which accidentally weakens the decay for the most-updated weights. AdamW applies the shrinkage separately so every weight is penalised equally. For large models (transformers, etc.) this makes a significant accuracy difference.
 
 With Adam, the learning rate is adjusted individually for each weight based on the history of its past gradients, which makes the optimiser converge faster and handle parameters with very different gradient magnitudes more gracefully than plain SGD.
 
@@ -388,7 +394,30 @@ output.weight.grad     shape: (2, 64)     one gradient per weight
 
 ### Step ⑥ — Weight Update
 
-Once every parameter has a `.grad` value from the backward pass, `optimizer.step()` applies the actual update. For plain gradient descent the rule is `w_new = w_old - lr * grad`. Adam adds two refinements: it tracks a running average of past gradients (momentum) and a running average of squared gradients (scaling), producing an **adaptive effective step size** per weight.
+Once every parameter has a `.grad` value from the backward pass, `optimizer.step()` applies the actual update. Three common optimisers take very different approaches:
+
+> [!NOTE]
+> **SGD vs Adam vs AdamW - which optimiser does what?**
+>
+> | Optimiser | Core idea | Strength | Weakness |
+> |---|---|---|---|
+> | **SGD** (plain) | `w = w - lr * grad` - every weight gets the same fixed step size | Simple, well-understood, often generalises well in vision tasks | Needs careful manual tuning of the learning rate; slow on parameters with very different gradient scales |
+> | **Adam** | Tracks a running average of past gradients (momentum) AND a running average of squared gradients (scaling) - each weight gets its own adaptive step size | Fast convergence, tolerant of different gradient scales, less manual tuning needed | Weight decay is applied **incorrectly** (see below) |
+> | **AdamW** | Adam with the weight-decay fix - decouples the regularisation penalty from the gradient update | Same speed as Adam but with correct regularisation - the current best-practice default in most frameworks | Slightly more hyperparameters (lr + weight decay + beta1 + beta2) |
+>
+> **Why does Adam have a weight-decay problem?**
+>
+> *What weight decay is:* Weight decay is a regularisation technique that slowly shrinks every weight toward zero each step, regardless of the gradient. Think of it as a mild gravitational pull back to zero. Small weights produce smoother, simpler decision boundaries, which generally generalise better. Without it, weights can grow large and the model becomes overly confident on training data but brittle on new data (overfitting).
+>
+> *The maths problem:* The standard way to add weight decay is to add a penalty term `lambda * w` to the gradient, so the update becomes `w = w - lr * (grad + lambda * w)`. With plain SGD, that is equivalent to multiplying `w` by `(1 - lr * lambda)` each step - a clean shrinkage. With Adam, however, the combined term `(grad + lambda * w)` is then scaled by Adam's adaptive denominator. This means weights that have been changing a lot (large denominator) receive weaker decay than weights that have barely changed. The regularisation effect is inconsistent and much weaker than intended - especially for commonly-updated parameters.
+>
+> *What AdamW does:* AdamW applies the weight-decay shrinkage **after** the adaptive gradient update instead of mixing it in before:
+> `w = w - lr * adam_update(grad) - lr * lambda * w`
+> Now every weight is shrunk by exactly the same proportion `(lr * lambda)` regardless of its gradient history. The penalty is decoupled.
+>
+> *In this project:* `torch.optim.Adam` is used with `weight_decay=1e-4`. For a small two-class problem like `make_moons` the difference between Adam and AdamW is negligible, but in large language models or vision transformers the distinction is critical.
+
+For plain gradient descent the rule is `w_new = w_old - lr * grad`. Adam adds two refinements: it tracks a running average of past gradients (momentum) and a running average of squared gradients (scaling), producing an **adaptive effective step size** per weight.
 
 > [!NOTE]
 > **What is a parameter and what is a `.grad` value?**
@@ -466,6 +495,8 @@ Once every parameter has a `.grad` value from the backward pass, `optimizer.step
 ```
 
 > The effective step size (~0.001) is much smaller than the raw gradient. Adam divides the gradient by a stability factor derived from its history, so a gradient of `0.034` becomes a weight change of only `0.0009`. This prevents large, destabilising jumps.
+>
+> With plain **SGD**, that same gradient would produce a step of exactly `lr * 0.034 = 0.01 * 0.034 = 0.00034` - a fixed fraction regardless of history. With **AdamW** the gradient update arithmetic is identical to Adam, but the `weight_decay=1e-4` shrinkage is then applied as a clean, separate multiplication (`w *= 1 - lr * 1e-4`) rather than being folded into the gradient estimate.
 
 **What accumulates across an entire epoch (13 mini-batches):**
 
@@ -1670,7 +1701,9 @@ Every technical term used in this project is defined below with plain-language e
 |---|---|
 | Accuracy | The fraction of predictions the model gets correct out of all predictions made. Computed as `(correct predictions) / (total predictions)` and expressed as a percentage. Accuracy alone can be misleading on imbalanced datasets where one class is far more common than the other — see also: Loss, Validation Metrics, F1-Score. |
 | Activation Function | A non-linear mathematical function applied to the output of each neuron before it passes to the next layer. Without activation functions, stacking multiple linear layers produces a single linear transformation regardless of depth — no additional expressiveness is gained. This project uses ReLU: `f(x) = max(0, x)`, which passes positive values unchanged and outputs zero for negative values. ReLU is fast to compute, avoids the vanishing gradient problem that plagued earlier functions like sigmoid, and produces sparse activations where many neurons output zero. |
-| Adam Optimiser | Adaptive Moment Estimation — a gradient-based optimisation algorithm that maintains a separate, adaptive learning rate for each model parameter. It combines momentum (averaging the direction of recent gradients) with RMSProp (scaling updates by the magnitude of recent gradients). In practice Adam converges faster than plain SGD on most tasks and requires less manual tuning of the learning rate. Used in this project via `torch.optim.Adam` with an initial learning rate of 0.01 and weight decay of 1e-4. |
+| SGD (Stochastic Gradient Descent) | The simplest gradient-based optimiser. Updates every weight by `w = w - lr * gradient` using the same fixed learning rate for every parameter. "Stochastic" means the gradient is computed on a randomly sampled mini-batch rather than the full dataset. SGD is easy to understand and analyse, and with careful learning-rate scheduling and momentum it can match or beat Adam in computer vision tasks. Its main weakness is sensitivity to the choice of learning rate and the need for a separate momentum hyperparameter if desired. |
+| Adam Optimiser | Adaptive Moment Estimation — a gradient-based optimisation algorithm that maintains a separate, adaptive learning rate for each model parameter. It combines momentum (a running average of past gradient directions) with RMSProp-style scaling (dividing by a running average of squared gradients), so weights that oscillate get smaller steps and stagnant weights get larger ones. In practice Adam converges faster than plain SGD on most tasks and requires less manual tuning of the learning rate. **Known limitation:** Adam applies weight decay incorrectly — the L2 penalty is added to the gradient before the adaptive scaling, which means heavily updated parameters receive weaker regularisation than intended. For large models this leads to measurable overfitting. Fixed by AdamW. Used in this project via `torch.optim.Adam` with an initial learning rate of 0.01 and weight decay of 1e-4. |
+| AdamW Optimiser | Adam with Decoupled Weight Decay — identical to Adam for the gradient update step, but applies the weight-decay penalty as a separate, direct shrinkage of the weights after the update (`w *= 1 - lr * lambda`) rather than folding it into the gradient. This "decoupling" ensures every parameter is regularised by exactly the same proportion regardless of its gradient history. AdamW is the current best-practice default in transformer-based models (BERT, GPT, ViT) and most modern deep learning frameworks. For small models like this project's MLP, the practical difference between Adam and AdamW is negligible. |
 | Backpropagation | The algorithm used to compute gradients of the loss with respect to every model parameter. After a forward pass produces a scalar loss value, backpropagation applies the chain rule of calculus layer by layer — from the output back to the input — computing how much each weight contributed to the final loss. The result is a gradient tensor for every learnable parameter. In PyTorch, backpropagation is triggered by calling `loss.backward()` and the gradients are stored in the `.grad` attribute of each parameter tensor. |
 | Batch Normalisation | A technique that normalises the inputs to each layer so they have approximately zero mean and unit variance across the samples in a mini-batch. This stabilises training by reducing internal covariate shift — the problem where the distribution of each layer's inputs keeps changing as earlier layers update their weights, forcing later layers to constantly re-adapt. Batch norm allows higher learning rates, speeds up convergence, and acts as a mild regulariser. In this project every hidden layer is immediately followed by `nn.BatchNorm1d`. |
 | Batch Size | The number of training samples processed together in one forward-backward pass before the weights are updated once. Larger batches produce smoother, lower-variance gradient estimates but require more memory and can converge to sharp minima that generalise poorly. Smaller batches are noisier but often generalise better and require less memory. The default in this project is 64. See also: Mini-Batch, Gradient Update Step, Stochastic Gradient Descent. |
