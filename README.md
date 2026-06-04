@@ -390,15 +390,79 @@ output.weight.grad     shape: (2, 64)     one gradient per weight
 
 Once every parameter has a `.grad` value from the backward pass, `optimizer.step()` applies the actual update. For plain gradient descent the rule is `w_new = w_old - lr * grad`. Adam adds two refinements: it tracks a running average of past gradients (momentum) and a running average of squared gradients (scaling), producing an **adaptive effective step size** per weight.
 
-**Before and after `optimizer.step()` for three example weights:**
+> [!NOTE]
+> **What is a parameter and what is a `.grad` value?**
+>
+> A **parameter** is one of the ~4,700 individual floating-point numbers the model learns. Every `nn.Linear` layer contains a weight matrix and a bias vector - each number inside those is a parameter. You can think of each parameter as a single dial on a very large control panel.
+>
+> A **`.grad` value** is the answer to: "if I increase this one dial by a tiny amount, does the total loss go up or down, and by how much?" It is computed by the backward pass and stored right next to the parameter itself.
+>
+> ```
+> Parameter name            What it is                  Example value   Example .grad
+> ─────────────────────────────────────────────────────────────────────────────────
+> layers.0.weight[0, 0]    first neuron's x-weight        +0.4500         +0.034
+>                          "how much does input x         ^the dial       ^turning it up
+>                           activate neuron 0?"            value           raises loss
+>
+> layers.0.weight[0, 1]    first neuron's y-weight        -0.2200         -0.019
+>                          "how much does input y         ^negative       ^turning it up
+>                           activate neuron 0?"            weight          lowers loss
+>
+> layers.0.bias[0]         neuron 0's activation          +0.0800         +0.005
+>                          threshold offset               ^small bias     ^mild upward pull
+>
+> output.weight[1, 0]      class-1 logit's weight on      +0.3100         -0.120
+>                          first hidden feature           ^positive       ^strong downward pull
+>                          "how much does feature 0        weight          -> increase this weight
+>                           vote for class 1?"
+>
+> output.bias[1]           class-1 logit's baseline       +0.2300         -0.120
+>                          offset regardless of input     ^raises class1  ^turning it up
+>                                                          confidence      lowers loss -> step UP
+> ```
+
+**Before and after `optimizer.step()` — first layer (input side) and last layer (output side):**
 
 ```
-Parameter           Before step()    Gradient    After step()     Changed by
-────────────────────────────────────────────────────────────────────────────
-layers.0.weight[0,0]  +0.4500        +0.034       +0.4491         -0.0009
-layers.0.weight[1,0]  -0.8100        -0.081       -0.8089         +0.0011
-layers.0.weight[2,0]  +0.1200        +0.002       +0.1199         -0.0001
-output.bias[1]         +0.2300        -0.120       +0.2313         +0.0013
+── FIRST LAYER — layers.0.weight  shape: (64, 2) ──────────────────────────────
+  These weights determine how the raw x and y coordinates are mixed
+  to activate each of the 64 first-layer neurons.
+
+  Parameter              Before step()  Gradient  After step()  Changed by
+  ─────────────────────────────────────────────────────────────────────────
+  layers.0.weight[0, 0]   +0.4500       +0.034     +0.4491       -0.0009
+  layers.0.weight[0, 1]   -0.2200       -0.019     -0.2198       +0.0002
+  layers.0.weight[1, 0]   -0.8100       -0.081     -0.8089       +0.0011
+  layers.0.weight[1, 1]   +0.6300       +0.063     +0.6291       -0.0009
+  layers.0.weight[2, 0]   +0.1200       +0.002     +0.1199       -0.0001
+  layers.0.weight[2, 1]   +0.3900       +0.007     +0.3899       -0.0001
+  layers.0.bias[0]         +0.0800       +0.005     +0.0799       -0.0001
+  layers.0.bias[1]         -0.0300       -0.011     -0.2989       +0.0001
+    ... 56 more neurons ...
+
+  Reading row 0 together: neuron 0 currently detects a direction that is
+  mostly +x (-0.22y). Gradient says both weights pull loss upward slightly,
+  so both are nudged down - neuron 0 will respond slightly less to x next batch.
+
+── LAST LAYER — output.weight  shape: (2, 64)  and  output.bias  shape: (2,) ──
+  These weights are the final voting layer. Row 0 = evidence for class 0
+  (lower moon). Row 1 = evidence for class 1 (upper moon).
+
+  Parameter              Before step()  Gradient  After step()  Changed by
+  ─────────────────────────────────────────────────────────────────────────
+  output.weight[0,  0]   +0.5100       +0.120     +0.5087       -0.0013
+  output.weight[0,  1]   -0.3400       -0.050     -0.3394       +0.0006
+  output.weight[0, 63]   +0.1700       +0.030     +0.1697       -0.0003
+  output.weight[1,  0]   -0.5100       -0.120     -0.5087       +0.0013
+  output.weight[1,  1]   +0.3400       +0.050     +0.3394       -0.0006
+  output.weight[1, 63]   -0.1700       -0.030     -0.1697       +0.0003
+  output.bias[0]          -0.1800       +0.110     -0.1812       -0.0012
+  output.bias[1]          +0.2300       -0.120     +0.2313       +0.0013
+
+  Note: output.weight rows are mirror-opposite (what helps class 1 hurts class 0).
+  output.bias[1] has gradient -0.120 - the largest single gradient here -
+  meaning the class-1 baseline logit is being actively pushed upward this batch.
+  The model is learning that class 1 needs a stronger baseline confidence.
 ```
 
 > The effective step size (~0.001) is much smaller than the raw gradient. Adam divides the gradient by a stability factor derived from its history, so a gradient of `0.034` becomes a weight change of only `0.0009`. This prevents large, destabilising jumps.
