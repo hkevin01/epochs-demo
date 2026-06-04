@@ -40,3 +40,6 @@ htmlcov/
 # Project outputs
 outputs/
 checkpoints/
+
+# Allow committed documentation images
+!docs/images/*.png
